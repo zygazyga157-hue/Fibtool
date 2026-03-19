@@ -1,0 +1,34 @@
+{
+  "EURUSD": { "base_harmonics": [27, 54], "common_multiples": [81, 108, 162] },
+  "GBPUSD": { "base_harmonics": [32, 64], "common_multiples": [96, 128, 192] },
+  "USDJPY": { "base_harmonics": [25, 50], "common_multiples": [75, 100, 150] },
+  "USDCHF": { "base_harmonics": [27, 54], "common_multiples": [81, 108] },
+  "AUDUSD": { "base_harmonics": [20, 40], "common_multiples": [60, 80, 120] },
+  "USDCAD": { "base_harmonics": [22, 44], "common_multiples": [66, 88, 132] },
+  "NZDUSD": { "base_harmonics": [18, 36], "common_multiples": [54, 72, 108] },
+
+  "XAUUSD": { "base_harmonics": [11, 17], "common_multiples": [22, 34, 44, 55, 68] },
+  "XAGUSD": { "base_harmonics": [12, 18], "common_multiples": [24, 36, 48, 72] },
+  "PLATINUM": { "base_harmonics": [20, 40], "common_multiples": [60, 80] },
+  "PALLADIUM": { "base_harmonics": [25, 50], "common_multiples": [75, 100] },
+
+  "BTCUSD": { "base_harmonics": [144, 288], "common_multiples": [432, 576, 720] },
+  "ETHUSD": { "base_harmonics": [72, 144], "common_multiples": [216, 288] },
+  "SOLUSD": { "base_harmonics": [36, 72], "common_multiples": [108, 144] },
+  "BNBUSD": { "base_harmonics": [45, 90], "common_multiples": [135, 180] },
+  "XRPUSD": { "base_harmonics": [18, 36], "common_multiples": [54, 72] },
+
+  "US SP 500": { "base_harmonics": [110, 170], "common_multiples": [270, 350, 540] },
+  "US Tech 100": { "base_harmonics": [90, 180], "common_multiples": [270, 360] },
+  "Wall Street 30": { "base_harmonics": [35, 70], "common_multiples": [105, 140] },
+  "AAPL": { "base_harmonics": [18, 36], "common_multiples": [54, 72] },
+  "TSLA": { "base_harmonics": [25, 50], "common_multiples": [75, 100] },
+  "MSFT": { "base_harmonics": [20, 40], "common_multiples": [60, 80] },
+
+  "WTI": { "base_harmonics": [44, 88], "common_multiples": [132, 176] },
+  "BRENT": { "base_harmonics": [40, 80], "common_multiples": [120, 160] },
+  "NATGAS": { "base_harmonics": [15, 30], "common_multiples": [45, 60] },
+  "WHEAT": { "base_harmonics": [11, 17], "common_multiples": [22, 34, 51] },
+  "CORN": { "base_harmonics": [12, 24], "common_multiples": [36, 48] },
+  "SOYBEANS": { "base_harmonics": [18, 36], "common_multiples": [54, 72] }
+}

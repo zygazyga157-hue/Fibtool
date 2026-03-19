@@ -1,0 +1,55 @@
+BEST COMMANDS — PRODUCTION TOOL 5
+Degree Factor Gann Angles (Maximum Accuracy)
+===========================================
+
+TOOL PURPOSE
+------------
+Time–price projection using Degree Factor Gann angles from recent pivots.
+Best used for:
+- Trade validation
+- Target expectation
+- Early failure detection
+- Wyckoff phase confirmation
+
+
+1) HIGH-ACCURACY DEFAULT (MOST INSTRUMENTS)
+-------------------------------------------
+python degree_factor_gann.py --symbols XAUUSD --timeframes M15 --gann-unit-mode atr --gann-atr-period 14 --gann-atr-ratio 0.25 --df-lows 0.175,0.35,0.525 --df-highs 0.175,0.35 --max-pivots 1 --bars-cap 240 --once
+
+
+2) INSTITUTIONAL MODE (FOREX / GOLD / INDICES)
+----------------------------------------------
+python degree_factor_gann.py --symbols XAUUSD,USDJPY --timeframes H1 --gann-unit-mode atr --gann-atr-period 21 --gann-atr-ratio 0.20 --df-lows 0.175,0.35,0.525 --df-highs 0.175,0.35 --max-pivots 1 --bars-cap 300 --once
+
+
+3) BOOM / CRASH / SYNTHETIC OPTIMIZED
+------------------------------------
+python degree_factor_gann.py --symbols BOOM_1000_INDEX,CRASH_1000_INDEX --timeframes M5 --gann-unit-mode atr --gann-atr-period 14 --gann-atr-ratio 0.30 --df-lows 0.175,0.35 --df-highs 0.175 --max-pivots 1 --bars-cap 180 --once
+
+
+4) FAST CONFIRMATION MODE (ENTRY VALIDATION)
+--------------------------------------------
+python degree_factor_gann.py --symbols XAUUSD --timeframes M5 --gann-unit-mode atr --gann-atr-period 14 --gann-atr-ratio 0.20 --df-lows 0.175,0.35 --df-highs 0.175 --bars-cap 120 --once
+
+
+5) MULTI-SYMBOL MONITOR (BACKGROUND MODE)
+-----------------------------------------
+python degree_factor_gann.py --symbols XAUUSD,USDJPY,BOOM_1000_INDEX --timeframes M15 --interval 90
+
+
+6) DEGREE FACTOR STUDY MODE (RESEARCH)
+--------------------------------------
+python degree_factor_gann.py --symbols XAUUSD --timeframes M30 --df-lows 0.175,0.35,0.525,0.7,0.875 --df-highs 0.175,0.35,0.525,0.7 --gann-unit-mode atr --gann-atr-period 14 --gann-atr-ratio 0.25 --bars-cap 360 --once
+
+
+BEST PRACTICES
+==============
+• Always prefer ATR-based scaling for volatile markets
+• Use ONE pivot for live trading (max-pivots=1)
+• Reduce DF angles on synthetic indices to avoid noise
+• Combine with:
+  - Candle signal direction
+  - Wyckoff phase
+  - Trendline support/resistance
+• Early violation of DF angles = weak move
+

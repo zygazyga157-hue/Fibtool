@@ -1,0 +1,152 @@
+========================================================
+MARKET HARMONICS REFERENCE FILE
+(Base Structural Harmonics & Common Multiples)
+========================================================
+
+NOTE:
+- Harmonics represent recurring price expansion units
+- They are NOT entry signals
+- Use with regime, time, volatility, and confirmation logic
+- Multiples (2x, 3x, 4x) are often more active in strong trends
+
+========================================================
+FOREX MAJOR PAIRS (USD-BASED ONLY)
+========================================================
+
+EUR/USD
+- Base Harmonics: 27, 54
+- Common Multiples: 81, 108, 162
+
+GBP/USD
+- Base Harmonics: 32, 64
+- Common Multiples: 96, 128, 192
+
+USD/JPY
+- Base Harmonics: 25, 50
+- Common Multiples: 75, 100, 150
+
+USD/CHF
+- Base Harmonics: 27, 54
+- Common Multiples: 81, 108
+
+AUD/USD
+- Base Harmonics: 20, 40
+- Common Multiples: 60, 80, 120
+
+USD/CAD
+- Base Harmonics: 22, 44
+- Common Multiples: 66, 88, 132
+
+NZD/USD
+- Base Harmonics: 18, 36
+- Common Multiples: 54, 72, 108
+
+========================================================
+METALS
+========================================================
+
+GOLD (XAU/USD)
+- Base Harmonics: 11, 17
+- Common Multiples: 22, 34, 44, 55, 68
+
+SILVER (XAG/USD)
+- Base Harmonics: 12, 18
+- Common Multiples: 24, 36, 48, 72
+
+PLATINUM
+- Base Harmonics: 20, 40
+- Common Multiples: 60, 80
+
+PALLADIUM
+- Base Harmonics: 25, 50
+- Common Multiples: 75, 100
+
+========================================================
+CRYPTOCURRENCY
+========================================================
+
+BITCOIN (BTC/USD)
+- Base Harmonics: 144, 288
+- Common Multiples: 432, 576, 720
+
+ETHEREUM (ETH/USD)
+- Base Harmonics: 72, 144
+- Common Multiples: 216, 288
+
+SOLANA (SOL/USD)
+- Base Harmonics: 36, 72
+- Common Multiples: 108, 144
+
+BINANCE COIN (BNB/USD)
+- Base Harmonics: 45, 90
+- Common Multiples: 135, 180
+
+RIPPLE (XRP/USD)
+- Base Harmonics: 18, 36
+- Common Multiples: 54, 72
+
+NOTE:
+Crypto harmonics are wider due to:
+- Higher volatility
+- Reflexive leverage
+- 24/7 session behavior
+
+========================================================
+STOCK INDICES & MAJOR STOCKS
+========================================================
+
+S&P 500 (SPX)
+- Base Harmonics: 110, 170
+- Common Multiples: 270, 350, 540
+
+NASDAQ 100 (NDX)
+- Base Harmonics: 90, 180
+- Common Multiples: 270, 360
+
+DOW JONES (DJI)
+- Base Harmonics: 35, 70
+- Common Multiples: 105, 140
+
+APPLE (AAPL)
+- Base Harmonics: 18, 36
+- Common Multiples: 54, 72
+
+TESLA (TSLA)
+- Base Harmonics: 25, 50
+- Common Multiples: 75, 100
+
+MICROSOFT (MSFT)
+- Base Harmonics: 20, 40
+- Common Multiples: 60, 80
+
+========================================================
+COMMODITIES (SELECTED)
+========================================================
+
+CRUDE OIL (WTI)
+- Base Harmonics: 44, 88
+- Common Multiples: 132, 176
+
+BRENT OIL
+- Base Harmonics: 40, 80
+- Common Multiples: 120, 160
+
+NATURAL GAS
+- Base Harmonics: 15, 30
+- Common Multiples: 45, 60
+
+WHEAT
+- Base Harmonics: 11, 17
+- Common Multiples: 22, 34, 51
+
+CORN
+- Base Harmonics: 12, 24
+- Common Multiples: 36, 48
+
+SOYBEANS
+- Base Harmonics: 18, 36
+- Common Multiples: 54, 72
+
+========================================================
+END OF FILE
+========================================================

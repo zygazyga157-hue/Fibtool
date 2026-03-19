@@ -1,0 +1,9 @@
+# Generated/updated from workspace imports on 2025-10-19
+# Runtime dependencies used across the project modules
+pandas
+numpy
+MetaTrader5
+requests
+# Explicit urllib3 because code imports it directly (requests vendor-dep is not always sufficient)
+urllib3>=1.26.15
+ancient-science-of-numbers==0.1.0

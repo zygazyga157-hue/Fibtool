@@ -1,0 +1,50 @@
+BEST TRENDLINE & GANN CLI COMMANDS
+================================
+
+1) Quick One-Off Trendline Scan (Manual Check)
+---------------------------------------------
+python trendlines.py --symbols XAUUSD --timeframes M15 --once
+
+
+2) Multi-Symbol Auto Refresh (Dashboard Mode)
+---------------------------------------------
+python trendlines.py --symbols XAUUSD,USDJPY,BOOM_1000_INDEX --timeframes M5,M15 --interval 120
+
+
+3) ATR-Based Gann Angles (Highly Recommended)
+---------------------------------------------
+python trendlines.py --symbols XAUUSD --timeframes M15 --gann-unit-mode atr --gann-atr-period 14 --gann-atr-ratio 0.25 --gann-tolerance 0.2 --once
+
+
+4) High-Confidence Structural Lines Only
+----------------------------------------
+python trendlines.py --symbols USDJPY --timeframes H1 --min-quality 0.7 --max-lines-per-side 2 --require-cluster-min 3 --once
+
+
+5) Full Gann Fan Projection
+---------------------------
+python trendlines.py --symbols XAUUSD --timeframes M30 --gann-draw-fan --gann-fan-forward 200 --gann-fan-labels 1 --once
+
+
+6) Indices / Synthetic Markets (Boom, V75)
+-------------------------------------------
+python trendlines.py --symbols BOOM_1000_INDEX,VOLATILITY_75_INDEX --timeframes M5,M15 --gann-unit-mode atr --gann-atr-period 14 --gann-atr-ratio 0.3 --min-quality 0.65 --once
+
+
+7) Clean-Up / Maintenance Mode
+------------------------------
+python trendlines.py --symbols XAUUSD --cleanup
+
+
+8) Signal Validation Mode (Pre-Trade Filter)
+---------------------------------------------
+python trendlines.py --symbols XAUUSD --timeframes M15 --min-quality 0.6 --max-lines-per-side 1 --once
+
+
+NOTES
+=====
+• ATR-based Gann angles are preferred for volatile instruments.
+• Use higher timeframes (M30/H1) for structure confirmation.
+• Combine with candlestick + Wyckoff analysis for best results.
+• Avoid over-plotting by limiting max-lines-per-side.
+

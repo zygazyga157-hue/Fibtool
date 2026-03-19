@@ -1,0 +1,146 @@
+FundedNext $50k Stellar 2-Step – Rule-Safe Trading Strategy
+==================================================
+
+PURPOSE
+This strategy is designed specifically to pass and trade safely on the FundedNext
+$50,000 Stellar 2-Step account while respecting all major rules, especially:
+- Daily loss limits
+- Maximum drawdown
+- 40% consistency rule
+- Clean payout eligibility
+
+--------------------------------------------------
+ACCOUNT RULES (DESIGN CONSTRAINTS)
+
+Account Size: $50,000
+Daily Loss Limit: 5% ($2,500)
+Maximum Loss: 10% ($5,000)
+Phase 1 Profit Target: $4,000 (8%)
+Phase 2 Profit Target: $2,500 (5%)
+Consistency Rule:
+- No single trading day may exceed 40% of total profit
+
+--------------------------------------------------
+RISK MANAGEMENT FRAMEWORK
+
+Risk Per Trade:
+- 0.5% per trade = $250
+
+Trades Per Day:
+- Maximum 2 trades
+
+Maximum Daily Risk:
+- 1% ($500)
+
+Rules:
+- Fixed risk only
+- No lot size changes based on emotions
+- Stop loss must be technical and structure-based
+
+--------------------------------------------------
+MARKETS & SESSIONS
+
+Trading Sessions:
+- London Session: 08:00–11:00 GMT
+- New York Open: 13:30–16:00 GMT
+
+Approved Instruments (choose 2–3 only):
+- EURUSD
+
+Avoid:
+- Exotic pairs
+- Overlapping correlated trades
+- Random or off-session trading
+
+--------------------------------------------------
+STRATEGY TYPE
+
+Style:
+- Trend continuation
+- Higher Timeframe bias + Lower Timeframe confirmation
+
+This avoids:
+- News gambling
+- Overtrading
+- Large single-day profit spikes
+
+--------------------------------------------------
+TRADE SETUP RULES
+
+Higher Timeframe (H1 or H4):
+Trade only if one condition is met:
+[Traders Section ..., **can debunk details]
+
+No bias = No trade
+
+Lower Timeframe Entry (M5 or M15):
+Enter only when:
+[Traders Section ...]
+
+Risk-to-Reward:
+- Minimum ...
+
+--------------------------------------------------
+DAILY & WEEKLY PROFIT TARGETS
+
+Phase 1:
+- Target $500–700 per day
+- Expected duration: 6–8 trading days
+
+Phase 2:
+- Target $400–600 per day
+- Expected duration: 5–6 trading days
+
+This ensures compliance with the 40% consistency rule.
+
+--------------------------------------------------
+DAILY TRADING RULES (NON-NEGOTIABLE)
+
+- Maximum 2 trades per day
+- Stop trading after:
+  - One full loss + one break-even, OR
+  - One solid winning trade
+- No revenge trading
+
+--------------------------------------------------
+NEWS MANAGEMENT
+
+- No new trades 5 minutes before or after high-impact news
+- If already in a trade during news:
+  - Do not adjust stop loss
+  - No manual interference
+
+--------------------------------------------------
+FUNDED PHASE ADJUSTMENTS
+
+Once funded:
+- Reduce risk to 0.25% per trade ($125)
+- Daily target: $300–600
+- Trade only 3–4 days per week
+
+Purpose:
+- Smooth equity curve
+- Clean consistency
+- Stress-free payouts
+
+--------------------------------------------------
+EXAMPLE PHASE 1 WEEK
+
+Monday: +$600
+Tuesday: +$500
+Wednesday: -$250
+Thursday: +$750
+Friday: +$650
+
+Weekly Total: +$2,250
+
+--------------------------------------------------
+WHY THIS STRATEGY WORKS
+
+- Fully consistency-rule safe
+- Drawdown-resistant
+- No dependence on single lucky trades
+- Designed for scaling and long-term payouts
+
+--------------------------------------------------
+END OF STRATEGY
