@@ -804,6 +804,25 @@ def run_once_fetch_and_analyze_for_symbol(symbol: str):
     except Exception:
         pass
 
+    # Optional: candlestick auto-trade (mechanical gates; disabled by default in config)
+    try:
+        import config as _cfg
+        if getattr(_cfg, "CANDLE_AUTOTRADE_ENABLED", False):
+            try:
+                from candlesticks.candlestick_autotrade import run_autotrade_for_symbol
+                res = run_autotrade_for_symbol(
+                    symbol=symbol,
+                    bars_path=bars_path,
+                    mt5=mt5,
+                    cfg=_cfg,
+                    outputs_dir=OUTPUT_DIR,
+                )
+                print(f"Candlestick autotrade result for {symbol}: {res.get('status')}")
+            except Exception as e:
+                print(f"Candlestick autotrade error for {symbol}: {e}")
+    except Exception:
+        pass
+
     # Optional: run harmonic analysis integration and persist signals
     try:
         try:

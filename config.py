@@ -26,6 +26,67 @@ CANDLES_DEDUPE_PERSIST = "outputs/telegram_sent.json"
 CANDLES_DEDUPE_MIN_SECONDS = 60 * 60  # minimum seconds between similar reports for same symbol (1 hour)
 CANDLES_DEDUPE_MIN_SCORE_DELTA = 0.5  # minimum absolute change in score to force resend
 
+# Candlestick auto-trade gates (mechanical, balanced capture)
+# When enabled, mt5_bg_collector will evaluate the last CLOSED bar and (optionally) place an order
+# using live_entry_bot_mt5.send_order(). Keep disabled by default.
+CANDLE_AUTOTRADE_ENABLED = True
+# Safety default: keep dry-run True until you've verified audit output + MT5 behavior.
+CANDLE_AUTOTRADE_DRY_RUN = False
+# Pattern scoring window and thresholds
+CANDLE_SIGNAL_WINDOW_BARS = 3
+CANDLE_AUTOTRADE_MIN_ABS_SCORE = 1.0
+# Strong-only patterns (directional) that must be present + fresh to qualify for auto-trade
+CANDLE_AUTOTRADE_REQUIRED_PATTERNS = [
+    # Top-ranked / strong set from the notebook ranking table
+    "CDL3LINESTRIKE",
+    "CDL3BLACKCROWS",
+    "CDL3WHITESOLDIERS",
+    "CDLEVENINGSTAR",
+    "CDLEVENINGDOJISTAR",
+    "CDLMORNINGSTAR",
+    "CDLMORNINGDOJISTAR",
+    "CDLABANDONEDBABY",
+    "CDLBREAKAWAY",
+    "CDLPIERCING",
+    "CDLDARKCLOUDCOVER",
+    "CDLINVERTEDHAMMER",
+    "CDLMATCHINGLOW",
+    "CDLHOMINGPIGEON",
+    "CDLIDENTICAL3CROWS",
+    "CDL3INSIDE",
+    "CDL3OUTSIDE",
+    # Common, reliable staples (even if lower-ranked in the table)
+    "CDLENGULFING",
+    "CDLHAMMER",
+    "CDLSHOOTINGSTAR",
+    "CDLHANGINGMAN",
+    "CDLHARAMI",
+    "CDLHARAMICROSS",
+    "CDLKICKING",
+]
+CANDLE_AUTOTRADE_FRESH_BARS = 1
+# Minimum bars required to compute ATR/patterns safely
+CANDLE_AUTOTRADE_MIN_BARS = 60
+# Market-condition filters
+CANDLE_AUTOTRADE_MIN_RANGE_ATR = 0.25
+CANDLE_AUTOTRADE_MAX_SPREAD_PIPS_FX = 2.5
+CANDLE_AUTOTRADE_MAX_SPREAD_ATR_FRAC = 0.08
+# Pending entry sanity
+CANDLE_AUTOTRADE_MAX_ENTRY_DISTANCE_ATR = 1.5
+# If breakout already happened, allow market entry only if close enough to the planned entry.
+CANDLE_AUTOTRADE_LATE_ENTRY_MAX_BUFFER_MULT = 1.0
+# Cooldown to avoid repeat exposure
+CANDLE_AUTOTRADE_COOLDOWN_SECONDS = 3600
+# State file used for per-symbol dedupe/cooldown
+CANDLE_AUTOTRADE_STATE_PATH = "outputs/candlestick_autotrade_state.json"
+# Liquidity windows (DST-safe via zoneinfo). Applied to fx/metals/indices; crypto remains 24/7.
+CANDLE_AUTOTRADE_LONDON_TZ = "Europe/London"
+CANDLE_AUTOTRADE_LONDON_START = "07:00"
+CANDLE_AUTOTRADE_LONDON_END = "17:00"
+CANDLE_AUTOTRADE_NY_TZ = "America/New_York"
+CANDLE_AUTOTRADE_NY_START = "08:00"
+CANDLE_AUTOTRADE_NY_END = "12:00"
+
 # Harmonic signals orchestration
 # When True the collector will run harmonic analysis and persist signals
 HARMONIC_SIGNALS_ENABLED = True
