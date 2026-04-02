@@ -57,13 +57,13 @@ CONFLUENCE_INDEX = os.path.join(OUTPUT_DIR, 'confluence_index.json')
 CONFLUENCE_TTL_MINUTES = 60
 
 # Default timeframe is M15 (user requested only M15)
-TIMEFRAME = mt5.TIMEFRAME_M15 if MT5_AVAILABLE else None
+TIMEFRAME = mt5.TIMEFRAME_H1 if MT5_AVAILABLE else None
 
 # Compute number of bars to fetch from MT5 based on desired history length.
 # Previously this was a fixed 500 bars. For better accuracy use ~6 months
 # of history by default (approximate month = 30 days). We compute an
 # estimate depending on the timeframe (M1, M5, M15, M30, H1, H4, D1, W1, MN1).
-DEFAULT_HISTORY_MONTHS = 3  
+DEFAULT_HISTORY_MONTHS = 18  
 MAX_BATCH_BARS = 100_000  # safety cap to avoid extremely large requests
 
 def _estimate_bars_for_timeframe(tf, months: int = DEFAULT_HISTORY_MONTHS) -> int:
@@ -830,9 +830,8 @@ def run_once_fetch_and_analyze_for_symbol(symbol: str):
                 # harmonics may be provided per-symbol in config.HARMONIC_HARMONICS
                 harms = None
                 # harmonics are loaded internally from docs/data/market_harmonics.json
-                session = os.getenv('HARMONIC_SESSION', 'auto')
-                if isinstance(session, str) and session.lower() == 'auto' and session_for_utc is not None:
-                    session = session_for_utc()
+                # env override > config override > harmonic_trader UTC windows
+                session = os.getenv('HARMONIC_SESSION', getattr(_cfg, 'HARMONIC_SESSION', 'auto'))
                 hres = analyze_symbol_live(symbol, timeframe='H1', count=BATCH_BARS, harmonics=None, session=session)
                 # persist as newline-delimited JSON for easy inspection
                 try:

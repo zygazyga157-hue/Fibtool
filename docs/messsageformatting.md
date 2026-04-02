@@ -48,11 +48,8 @@ python plots\trend_lines_plot.py --symbols "Crash 1000 Index" --once `
 "Boom 1000 Index, Crash 1000 Index,Boom 500 Index,Crash 500 Index,Step Index,BTCUSD,UK 100,Wall Street 30,US SP 500,US Tech 100,ETHUSD,BTCETH,SOLUSD,Volatility 25 Index,Volatility 50 Index,Volatility 75 Index"
 
 python live_trade_setup_bot_mt5.py --symbols-file symbols_timeframes.json --timeframe D1 --require-wyckoff --wyckoff-bias auto --min-confs 2
-  
-. .\.venv\Scripts\Activate.ps1; $env:PYTHONPATH = (Get-Location).Path; python .\scripts\run_harmonic.py --symbol "US SP 500" --session London  
 
-python scripts/run_harmonic.py --symbol XAUUSD --session auto --timeframe M15 --count 2882
 
-python scripts/run_asia_sweep.py --live --dry-run --once --time-zone Africa/Harare --session-time-zone Europe/London
+python scripts/run_asia_sweep.py --live --no-dry-run --interval 300 --time-zone Africa/Johannesburg --session-time-zone Europe/London --risk-pct 1.0 --ml --ml-model-root outputs/models/asia_sweep_mss --ml-min-prob 0.60 --ml-retrain-at 14:15 --ml-retrain-tz Europe/London
 
-python scripts/run_asia_sweep.py --live --no-dry-run --interval 60 --time-zone Africa/Harare --session-time-zone Europe/London --risk-pct 1.0
+python -m ml.asia_sweep_london_mss.train --data ml/asia_sweep_london_mss/data/dataset_v3_both.csv --out outputs/models/asia_sweep_mss/v3_20260330 --smote --focal-loss --hidden 64,32 --dropout 0.1 --patience 8 --epochs 50 --activate-root outputs/models/asia_sweep_mss

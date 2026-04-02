@@ -16,12 +16,9 @@ args = parser.parse_args()
 if args.symbol:
     out = None
     try:
-        from harmonic_trader import analyze_symbol_live, session_for_utc, fetch_bars_mt5
-        sess = args.session
-        if isinstance(sess, str) and sess.lower() == 'auto':
-            sess = session_for_utc()
+        from harmonic_trader import analyze_symbol_live
         # harmonics will be loaded from docs/data/market_harmonics.json internally
-        out = analyze_symbol_live(args.symbol, timeframe=args.timeframe, count=args.count, harmonics=None, session=sess)
+        out = analyze_symbol_live(args.symbol, timeframe=args.timeframe, count=args.count, harmonics=None, session=args.session)
     except Exception as e:
         print(f"Error analyzing live symbol via MT5: {e}")
         # Fallback: try loading from local CSV if it exists

@@ -240,13 +240,10 @@ def compute_model_b_breakout(df: pd.DataFrame, signal: Dict[str, Optional[str]],
         tick_component = max(0.0, float(step) * max(1, min_buffer_ticks))
         buffer = max(float(base_buffer), atr_component, tick_component)
 
-        rr_cfg = _get_cfg_float(
-            f"MODEL_B_RR_{profile_key}",
-            _get_cfg_float("MODEL_B_RR", 2.0),
-        )
+        rr_cfg = _get_cfg_float("MSE_RR_BASE", 2.0)
         rr = float(rr if rr is not None else rr_cfg)
         if rr <= 0:
-            rr = _get_cfg_float("MODEL_B_RR", 2.0)
+            rr = _get_cfg_float("MSE_RR_BASE", 2.0)
 
         min_risk_atr_mult = _get_cfg_float(
             f"MODEL_B_MIN_RISK_ATR_MULT_{profile_key}",
@@ -329,6 +326,762 @@ def compute_model_b_breakout(df: pd.DataFrame, signal: Dict[str, Optional[str]],
     except Exception:
         LOG.exception("compute_model_b_breakout failed")
     return out
+
+
+def compute_model_a_close(df: pd.DataFrame, signal: Dict[str, Optional[str]], *,
+                          spread: Optional[float] = None,
+                          rr: Optional[float] = None,
+                          symbol: Optional[str] = None) -> Dict[str, object]:
+    """Model A — Close Entry.
+
+    Enter at the close of the signal candle.
+    Returns dict with keys: method, entry, stop, tp, rr, buffer, profile, atr, risk, step.
+    """
+    out: Dict[str, object] = {}
+    try:
+        if not signal or not isinstance(signal, dict):
+            return out
+        side = signal.get("signal")
+        if side not in ("buy", "sell"):
+            return out
+        if df is None or len(df) == 0:
+            return out
+
+        sig = df.iloc[-1]
+        high = float(sig["high"])
+        low = float(sig["low"])
+        close = float(sig["close"])
+        candle_range = max(0.0, high - low)
+
+        profile = _model_b_profile(symbol or "")
+        profile_key = profile.upper()
+
+        atr = _compute_atr(df.tail(200), period=14)
+        pip_size = _pip_size_for_symbol(symbol or "")
+        step = _infer_step_from_prices(df.tail(200), pip_size)
+
+        # Buffer computation (reuse Model B logic for consistency)
+        if pip_size:
+            spread_pips = float(getattr(config, "MODEL_B_SPREAD_PIPS_FX", 2.0))
+            safety_pips = float(getattr(config, "MODEL_B_SAFETY_PIPS_FX", 1.0))
+            base_buffer = (spread_pips + safety_pips) * pip_size
+        else:
+            spread_default = _get_cfg_float(
+                f"MODEL_B_ESTIMATED_SPREAD_{profile_key}",
+                _get_cfg_float("MODEL_B_ESTIMATED_SPREAD", 0.02),
+            )
+            safety_default = _get_cfg_float(
+                f"MODEL_B_SAFETY_MARGIN_{profile_key}",
+                _get_cfg_float("MODEL_B_SAFETY_MARGIN", 0.0),
+            )
+            sp = float(spread if spread is not None else spread_default)
+            sm = float(safety_default)
+            base_buffer = sp + sm
+
+        atr_buffer_mult = _get_cfg_float(
+            f"MODEL_B_ATR_BUFFER_MULT_{profile_key}",
+            _get_cfg_float("MODEL_B_ATR_BUFFER_MULT_DEFAULT", 0.12),
+        )
+        min_buffer_ticks = int(_get_cfg_float(
+            f"MODEL_B_MIN_BUFFER_TICKS_{profile_key}",
+            _get_cfg_float("MODEL_B_MIN_BUFFER_TICKS_DEFAULT", 2),
+        ))
+        atr_component = (atr * atr_buffer_mult) if atr else 0.0
+        tick_component = max(0.0, float(step) * max(1, min_buffer_ticks))
+        buffer = max(float(base_buffer), atr_component, tick_component)
+
+        rr_cfg = _get_cfg_float("MSE_RR_BASE", 2.0)
+        rr = float(rr if rr is not None else rr_cfg)
+        if rr <= 0:
+            rr = _get_cfg_float("MSE_RR_BASE", 2.0)
+
+        if side == "buy":
+            entry = close
+            stop = low - buffer
+            risk = entry - stop
+            if risk <= 0:
+                return out
+            tp = entry + risk * rr
+        else:
+            entry = close
+            stop = high + buffer
+            risk = stop - entry
+            if risk <= 0:
+                return out
+            tp = entry - risk * rr
+
+        step_f = float(step) if step else 0.0
+        if step_f > 0:
+            entry_r = _round_to_step(entry, step_f)
+            if side == "buy":
+                stop_r = _round_down_to_step(float(stop), step_f)
+                risk_r = entry_r - stop_r
+                if risk_r <= 0:
+                    risk_r = step_f
+                    stop_r = entry_r - risk_r
+                tp_r = _round_up_to_step(entry_r + risk_r * rr, step_f)
+            else:
+                stop_r = _round_up_to_step(float(stop), step_f)
+                risk_r = stop_r - entry_r
+                if risk_r <= 0:
+                    risk_r = step_f
+                    stop_r = entry_r + risk_r
+                tp_r = _round_down_to_step(entry_r - risk_r * rr, step_f)
+        else:
+            entry_r = float(entry)
+            stop_r = float(stop)
+            tp_r = float(tp)
+            risk_r = abs(entry_r - stop_r)
+
+        rr_effective = (abs(tp_r - entry_r) / risk_r) if risk_r > 0 else None
+
+        out = {
+            "method": "model_a_close",
+            "entry": entry_r,
+            "stop": stop_r,
+            "tp": tp_r,
+            "rr": rr,
+            "rr_effective": round(float(rr_effective), 6) if rr_effective is not None else None,
+            "buffer": round(buffer, 8),
+            "profile": profile,
+            "atr": round(float(atr), 8) if atr else None,
+            "risk": round(float(risk_r), 8),
+            "step": round(float(step), 8),
+            "candle_range": round(float(candle_range), 8),
+        }
+    except Exception:
+        LOG.exception("compute_model_a_close failed")
+    return out
+
+
+def compute_model_c_retrace(df: pd.DataFrame, signal: Dict[str, Optional[str]], *,
+                            spread: Optional[float] = None,
+                            rr: Optional[float] = None,
+                            retrace_ratio: Optional[float] = None,
+                            symbol: Optional[str] = None) -> Dict[str, object]:
+    """Model C — Retrace (Limit) Entry.
+
+    Enter on a pullback into the signal candle at the retrace level.
+    Returns dict with keys: method, entry, stop, tp, rr, buffer, profile, atr, risk, step, retrace_ratio.
+    """
+    out: Dict[str, object] = {}
+    try:
+        if not signal or not isinstance(signal, dict):
+            return out
+        side = signal.get("signal")
+        if side not in ("buy", "sell"):
+            return out
+        if df is None or len(df) == 0:
+            return out
+
+        sig = df.iloc[-1]
+        high = float(sig["high"])
+        low = float(sig["low"])
+        candle_range = max(0.0, high - low)
+        if candle_range <= 0:
+            return out
+
+        profile = _model_b_profile(symbol or "")
+        profile_key = profile.upper()
+
+        atr = _compute_atr(df.tail(200), period=14)
+        pip_size = _pip_size_for_symbol(symbol or "")
+        step = _infer_step_from_prices(df.tail(200), pip_size)
+
+        # Retrace ratio: default 0.5, optionally 0.618 for deeper retracement
+        retrace = float(retrace_ratio if retrace_ratio is not None
+                        else _get_cfg_float("MODEL_C_RETRACE_RATIO", 0.5))
+
+        # Buffer computation (reuse Model B logic)
+        if pip_size:
+            spread_pips = float(getattr(config, "MODEL_B_SPREAD_PIPS_FX", 2.0))
+            safety_pips = float(getattr(config, "MODEL_B_SAFETY_PIPS_FX", 1.0))
+            base_buffer = (spread_pips + safety_pips) * pip_size
+        else:
+            spread_default = _get_cfg_float(
+                f"MODEL_B_ESTIMATED_SPREAD_{profile_key}",
+                _get_cfg_float("MODEL_B_ESTIMATED_SPREAD", 0.02),
+            )
+            safety_default = _get_cfg_float(
+                f"MODEL_B_SAFETY_MARGIN_{profile_key}",
+                _get_cfg_float("MODEL_B_SAFETY_MARGIN", 0.0),
+            )
+            sp = float(spread if spread is not None else spread_default)
+            sm = float(safety_default)
+            base_buffer = sp + sm
+
+        atr_buffer_mult = _get_cfg_float(
+            f"MODEL_B_ATR_BUFFER_MULT_{profile_key}",
+            _get_cfg_float("MODEL_B_ATR_BUFFER_MULT_DEFAULT", 0.12),
+        )
+        min_buffer_ticks = int(_get_cfg_float(
+            f"MODEL_B_MIN_BUFFER_TICKS_{profile_key}",
+            _get_cfg_float("MODEL_B_MIN_BUFFER_TICKS_DEFAULT", 2),
+        ))
+        atr_component = (atr * atr_buffer_mult) if atr else 0.0
+        tick_component = max(0.0, float(step) * max(1, min_buffer_ticks))
+        buffer = max(float(base_buffer), atr_component, tick_component)
+
+        rr_cfg = _get_cfg_float("MSE_RR_BASE", 2.0)
+        rr = float(rr if rr is not None else rr_cfg)
+        if rr <= 0:
+            rr = _get_cfg_float("MSE_RR_BASE", 2.0)
+
+        if side == "buy":
+            entry = low + retrace * candle_range
+            stop = low - buffer
+            risk = entry - stop
+            if risk <= 0:
+                return out
+            tp = entry + risk * rr
+        else:
+            entry = high - retrace * candle_range
+            stop = high + buffer
+            risk = stop - entry
+            if risk <= 0:
+                return out
+            tp = entry - risk * rr
+
+        step_f = float(step) if step else 0.0
+        if step_f > 0:
+            if side == "buy":
+                entry_r = _round_down_to_step(float(entry), step_f)
+                stop_r = _round_down_to_step(float(stop), step_f)
+                risk_r = entry_r - stop_r
+                if risk_r <= 0:
+                    risk_r = step_f
+                    stop_r = entry_r - risk_r
+                tp_r = _round_up_to_step(entry_r + risk_r * rr, step_f)
+            else:
+                entry_r = _round_up_to_step(float(entry), step_f)
+                stop_r = _round_up_to_step(float(stop), step_f)
+                risk_r = stop_r - entry_r
+                if risk_r <= 0:
+                    risk_r = step_f
+                    stop_r = entry_r + risk_r
+                tp_r = _round_down_to_step(entry_r - risk_r * rr, step_f)
+        else:
+            entry_r = float(entry)
+            stop_r = float(stop)
+            tp_r = float(tp)
+            risk_r = abs(entry_r - stop_r)
+
+        rr_effective = (abs(tp_r - entry_r) / risk_r) if risk_r > 0 else None
+
+        out = {
+            "method": "model_c_retrace",
+            "entry": entry_r,
+            "stop": stop_r,
+            "tp": tp_r,
+            "rr": rr,
+            "rr_effective": round(float(rr_effective), 6) if rr_effective is not None else None,
+            "buffer": round(buffer, 8),
+            "profile": profile,
+            "atr": round(float(atr), 8) if atr else None,
+            "risk": round(float(risk_r), 8),
+            "step": round(float(step), 8),
+            "candle_range": round(float(candle_range), 8),
+            "retrace_ratio": retrace,
+        }
+    except Exception:
+        LOG.exception("compute_model_c_retrace failed")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Pattern classification helpers for the Model Selection Engine
+# ---------------------------------------------------------------------------
+# All 61 TA-Lib CDL* patterns classified into momentum, reversal, indecision.
+
+_MOMENTUM_PATTERNS = frozenset([
+    # Strong directional / continuation patterns
+    "CDLMARUBOZU", "CDLCLOSINGMARUBOZU", "CDL3WHITESOLDIERS",
+    "CDL3BLACKCROWS", "CDL3LINESTRIKE", "CDLKICKING",
+    "CDLBELTHOLD", "CDLSEPARATINGLINES",
+    # Continuation / breakout patterns
+    "CDL3INSIDE", "CDL3OUTSIDE", "CDLBREAKAWAY",
+    "CDLGAPSIDESIDEWHITE", "CDLKICKINGBYLENGTH", "CDLLONGLINE",
+    "CDLMATHOLD", "CDLRISEFALL3METHODS", "CDLXSIDEGAP3METHODS",
+    "CDLTASUKIGAP",
+])
+
+_REVERSAL_PATTERNS = frozenset([
+    # Classic reversal signals
+    "CDLDOJI", "CDLHAMMER", "CDLHARAMI", "CDLHARAMICROSS",
+    "CDLTAKURI", "CDLDRAGONFLYDOJI", "CDLGRAVESTONEDOJI",
+    "CDLINVERTEDHAMMER", "CDLMORNINGSTAR", "CDLMORNINGDOJISTAR",
+    "CDLEVENINGSTAR", "CDLEVENINGDOJISTAR", "CDLABANDONEDBABY",
+    "CDLPIERCING", "CDLDARKCLOUDCOVER", "CDLHANGINGMAN",
+    "CDLSHOOTINGSTAR", "CDLENGULFING", "CDLHOMINGPIGEON",
+    "CDLMATCHINGLOW",
+    # Bearish reversal / exhaustion patterns
+    "CDL2CROWS", "CDLADVANCEBLOCK", "CDLIDENTICAL3CROWS",
+    "CDLSTALLEDPATTERN", "CDLUPSIDEGAP2CROWS",
+    # Bullish reversal / bottoming patterns
+    "CDL3STARSINSOUTH", "CDLCONCEALBABYSWALL", "CDLLADDERBOTTOM",
+    "CDLSTICKSANDWICH", "CDLUNIQUE3RIVER",
+    # Weak reversal / continuation-in-context patterns
+    "CDLCOUNTERATTACK", "CDLDOJISTAR", "CDLINNECK",
+    "CDLONNECK", "CDLTHRUSTING", "CDLTRISTAR",
+])
+
+_INDECISION_PATTERNS = frozenset([
+    "CDLSPINNINGTOP", "CDLHIGHWAVE", "CDLRICKSHAWMAN",
+    "CDLLONGLEGGEDDOJI",
+    # Trap / ambiguous patterns
+    "CDLHIKKAKE", "CDLHIKKAKEMOD", "CDLSHORTLINE",
+])
+
+
+def _count_pattern_class(hits: List[str], cls: frozenset) -> int:
+    return sum(1 for h in hits if str(h).upper() in cls)
+
+
+def _humanize_pattern(code: str) -> str:
+    """Convert a CDL* pattern code to a human-readable name."""
+    if not code:
+        return str(code)
+    s = str(code).upper()
+    if s.startswith("CDL"):
+        s = s[3:]
+    _MAP = {
+        "MARUBOZU": "Marubozu", "CLOSINGMARUBOZU": "Closing Marubozu",
+        "3WHITESOLDIERS": "3 White Soldiers", "3BLACKCROWS": "3 Black Crows",
+        "LONGLINE": "Long Line", "BELTHOLD": "Belt Hold",
+        "KICKING": "Kicking", "KICKINGBYLENGTH": "Kicking (by length)",
+        "SEPARATINGLINES": "Separating Lines", "3LINESTRIKE": "3 Line Strike",
+        "GAPSIDESIDEWHITE": "Gap Side-by-Side White", "TASUKIGAP": "Tasuki Gap",
+        "MATHOLD": "Mat Hold", "RISEFALL3METHODS": "Rise/Fall 3 Methods",
+        "BREAKAWAY": "Breakaway", "XSIDEGAP3METHODS": "Side Gap 3 Methods",
+        "3INSIDE": "3 Inside", "3OUTSIDE": "3 Outside",
+        "DOJI": "Doji", "LONGLEGGEDDOJI": "Long-Legged Doji",
+        "DRAGONFLYDOJI": "Dragonfly Doji", "GRAVESTONEDOJI": "Gravestone Doji",
+        "HAMMER": "Hammer", "INVERTEDHAMMER": "Inverted Hammer",
+        "TAKURI": "Takuri", "HANGINGMAN": "Hanging Man",
+        "SHOOTINGSTAR": "Shooting Star", "ENGULFING": "Engulfing",
+        "HARAMI": "Harami", "HARAMICROSS": "Harami Cross",
+        "MORNINGSTAR": "Morning Star", "EVENINGSTAR": "Evening Star",
+        "MORNINGDOJISTAR": "Morning Doji Star", "EVENINGDOJISTAR": "Evening Doji Star",
+        "PIERCING": "Piercing Line", "DARKCLOUDCOVER": "Dark Cloud Cover",
+        "ABANDONEDBABY": "Abandoned Baby", "HOMINGPIGEON": "Homing Pigeon",
+        "MATCHINGLOW": "Matching Low", "2CROWS": "2 Crows",
+        "ADVANCEBLOCK": "Advance Block", "IDENTICAL3CROWS": "Identical 3 Crows",
+        "STALLEDPATTERN": "Stalled Pattern", "UPSIDEGAP2CROWS": "Upside Gap 2 Crows",
+        "3STARSINSOUTH": "3 Stars In South", "CONCEALBABYSWALL": "Conceal Baby Swallow",
+        "LADDERBOTTOM": "Ladder Bottom", "STICKSANDWICH": "Stick Sandwich",
+        "UNIQUE3RIVER": "Unique 3 River", "COUNTERATTACK": "Counter Attack",
+        "DOJISTAR": "Doji Star", "INNECK": "In Neck",
+        "ONNECK": "On Neck", "THRUSTING": "Thrusting",
+        "TRISTAR": "TriStar", "SPINNINGTOP": "Spinning Top",
+        "HIGHWAVE": "High Wave", "RICKSHAWMAN": "Rickshaw Man",
+        "HIKKAKE": "Hikkake", "HIKKAKEMOD": "Modified Hikkake",
+        "SHORTLINE": "Short Line",
+    }
+    return _MAP.get(s, s.lower().capitalize())
+
+
+def _build_signal_recommendation(
+    side: str,
+    pattern_hits: List[str],
+    momentum: int,
+    reversal: int,
+    indecision: int,
+) -> Dict[str, object]:
+    """Derive a narrative recommendation from pattern classification.
+
+    Returns dict:
+        label: str           — "Probable reversal — bullish", "Momentum bias", etc.
+        because: str         — humanized pattern names explaining why
+        alignment: str       — "confirms" | "contradicts" | "neutral"
+        suggested_side: str  — "buy" | "sell" | "wait"
+    """
+    side_lower = str(side or "").lower()
+    total = momentum + reversal + indecision
+
+    def _names(cls: frozenset, limit: int = 3) -> List[str]:
+        return [_humanize_pattern(h) for h in pattern_hits
+                if str(h).upper() in cls][:limit]
+
+    # No patterns at all
+    if total == 0:
+        return {
+            "label": "No pattern signal",
+            "because": "no classified patterns detected",
+            "alignment": "neutral",
+            "suggested_side": side_lower or "wait",
+        }
+
+    # Indecision dominates
+    if indecision > momentum and indecision > reversal:
+        names = ", ".join(_names(_INDECISION_PATTERNS)) or "indecision candles"
+        return {
+            "label": "Market indecision",
+            "because": f"{names} — no directional edge",
+            "alignment": "neutral",
+            "suggested_side": "wait",
+        }
+
+    # Reversal dominates
+    if reversal > momentum:
+        names = ", ".join(_names(_REVERSAL_PATTERNS)) or "reversal candles"
+        if side_lower == "buy":
+            return {
+                "label": "Probable reversal — bullish",
+                "because": f"{names} suggest bearish exhaustion",
+                "alignment": "confirms",
+                "suggested_side": "buy",
+            }
+        if side_lower == "sell":
+            return {
+                "label": "Probable reversal — bearish",
+                "because": f"{names} suggest bullish exhaustion",
+                "alignment": "confirms",
+                "suggested_side": "sell",
+            }
+        return {
+            "label": "Probable reversal",
+            "because": f"{names} suggest a directional turn",
+            "alignment": "neutral",
+            "suggested_side": "wait",
+        }
+
+    # Momentum dominates (or equal with reversal)
+    names = ", ".join(_names(_MOMENTUM_PATTERNS)) or "momentum candles"
+    if side_lower == "buy":
+        return {
+            "label": "Momentum bias — bullish",
+            "because": f"{names} support continuation higher",
+            "alignment": "confirms",
+            "suggested_side": "buy",
+        }
+    if side_lower == "sell":
+        return {
+            "label": "Momentum bias — bearish",
+            "because": f"{names} support continuation lower",
+            "alignment": "confirms",
+            "suggested_side": "sell",
+        }
+    return {
+        "label": "Momentum signal",
+        "because": f"{names} — strong directional pressure",
+        "alignment": "neutral",
+        "suggested_side": "wait",
+    }
+
+
+def _classify_volatility(atr_ratio: Optional[float], cfg: object = None) -> str:
+    """Classify ATR ratio into High / Medium / Low volatility state."""
+    if atr_ratio is None:
+        return "medium"
+    _cfg = cfg or config
+    high_thresh = float(getattr(_cfg, "MSE_ATR_RATIO_HIGH", 0.02))
+    low_thresh = float(getattr(_cfg, "MSE_ATR_RATIO_LOW", 0.005))
+    if atr_ratio >= high_thresh:
+        return "high"
+    if atr_ratio <= low_thresh:
+        return "low"
+    return "medium"
+
+
+def _compute_breakout_score(df: pd.DataFrame, signal: Dict) -> float:
+    """Compute a 0–1 breakout score from the signal candle.
+
+    Components (each 0.0–1.0, equally weighted):
+      body_ratio  – abs(close-open) / (high-low).  Full body → 1.0.
+      close_pos   – how near the close is to the directional extreme.
+      range_ratio – candle_range / ATR.  Capped at 2×ATR → 1.0.
+    """
+    try:
+        if df is None or len(df) == 0 or not isinstance(signal, dict):
+            return 0.0
+
+        sig = df.iloc[-1]
+        high = float(sig["high"])
+        low = float(sig["low"])
+        close = float(sig["close"])
+        open_ = float(sig["open"])
+        candle_range = high - low
+        if candle_range <= 0:
+            return 0.0
+
+        side = signal.get("signal", "")
+
+        # 1. Body ratio: decisive close = high body
+        body_ratio = min(abs(close - open_) / candle_range, 1.0)
+
+        # 2. Close position: buy → close near high, sell → close near low
+        if side == "buy":
+            close_pos = (close - low) / candle_range
+        elif side == "sell":
+            close_pos = (high - close) / candle_range
+        else:
+            close_pos = 0.5
+
+        # 3. Range relative to ATR (wide candle = breakout)
+        atr = _compute_atr(df.tail(200), period=14)
+        if atr and atr > 0:
+            range_ratio = min(candle_range / atr, 2.0) / 2.0
+        else:
+            range_ratio = 0.5
+
+        return round((body_ratio + close_pos + range_ratio) / 3.0, 4)
+    except Exception:
+        return 0.0
+
+
+def _compute_reflexive_rr(
+    base_rr: float,
+    *,
+    score: float = 0.0,
+    confidence: float = 0.60,
+    volatility: str = "medium",
+    model: str = "B",
+    cfg: object = None,
+) -> float:
+    """Compute a context-adaptive RR from the base profile RR.
+
+    Multipliers (each small, compounding):
+      score_mult      – stronger signal → extend target.  [0.90 .. 1.15]
+      confidence_mult – higher MSE confidence → wider.    [0.90 .. 1.10]
+      volatility_mult – high vol → tighter, low → wider.  [0.90 .. 1.10]
+      model_mult      – Model C gets best entry → wider.  A=1.0, B=1.0, C=1.10.
+
+    Result clamped between MSE_RR_FLOOR and MSE_RR_CEILING.
+    """
+    _cfg = cfg or config
+    rr_floor = float(getattr(_cfg, "MSE_RR_FLOOR", 1.2))
+    rr_ceiling = float(getattr(_cfg, "MSE_RR_CEILING", 4.5))
+
+    abs_score = abs(score)
+    # Score factor: <2 → 0.90, 3.5 → 1.0, >=5 → 1.15 (linear interpolation)
+    if abs_score <= 2.0:
+        score_mult = 0.90
+    elif abs_score >= 5.0:
+        score_mult = 1.15
+    else:
+        score_mult = 0.90 + (abs_score - 2.0) * (0.25 / 3.0)
+
+    # Confidence factor
+    if confidence < 0.65:
+        confidence_mult = 0.90
+    elif confidence >= 0.80:
+        confidence_mult = 1.10
+    else:
+        # Linear 0.65→1.0, 0.80→1.10
+        confidence_mult = 1.0 + (confidence - 0.65) * (0.10 / 0.15)
+
+    # Volatility factor: high vol → tighter targets (higher win rate),
+    # low vol → extend targets (need more room to be worth it)
+    vol_map = {"high": 0.90, "medium": 1.0, "low": 1.10}
+    volatility_mult = vol_map.get(volatility, 1.0)
+
+    # Model factor: retrace entry (C) gets a deeper entry → lower risk →
+    # can afford a wider RR ratio
+    model_map = {"A": 1.0, "B": 1.0, "C": 1.10}
+    model_mult = model_map.get(model, 1.0)
+
+    rr = base_rr * score_mult * confidence_mult * volatility_mult * model_mult
+    return round(max(rr_floor, min(rr, rr_ceiling)), 4)
+
+
+def select_model(
+    *,
+    score: float,
+    strong_patterns_hit: List[str],
+    breakout_score: Optional[float] = None,
+    wyckoff_phase: Optional[str] = None,
+    atr_ratio: Optional[float] = None,
+    cfg: object = None,
+) -> Dict[str, object]:
+    """Model Selection Engine (MSE).
+
+    Maps market conditions to the optimal entry model (A, B, or C).
+
+    Returns dict with keys:
+        model: str          — "A", "B", or "C"
+        confidence: float   — 0.0–1.0
+        backup_model: str|None
+        reason: str
+        volatility: str     — "high", "medium", or "low"
+    """
+    abs_score = abs(float(score)) if score is not None else 0.0
+    momentum = _count_pattern_class(strong_patterns_hit, _MOMENTUM_PATTERNS)
+    reversal = _count_pattern_class(strong_patterns_hit, _REVERSAL_PATTERNS)
+
+    # Configurable thresholds
+    _cfg = cfg or config
+    score_a_threshold = float(getattr(_cfg, "MSE_SCORE_A_THRESHOLD", 3.5))
+    score_b_threshold = float(getattr(_cfg, "MSE_SCORE_B_THRESHOLD", 2.0))
+    breakout_score_threshold = float(getattr(_cfg, "MSE_BREAKOUT_SCORE_THRESHOLD", 0.6))
+
+    bscore = float(breakout_score) if breakout_score is not None else 0.0
+    wyckoff = str(wyckoff_phase or "").lower().strip()
+    volatility = _classify_volatility(atr_ratio, _cfg)
+
+    # Confidence modifier based on volatility alignment
+    def _vol_adjust(base_conf: float, model: str) -> float:
+        if volatility == "high" and model == "B":
+            return min(base_conf + 0.05, 1.0)
+        if volatility == "low" and model == "C":
+            return min(base_conf + 0.05, 1.0)
+        if volatility == "high" and model == "C":
+            return max(base_conf - 0.05, 0.0)
+        if volatility == "low" and model == "B":
+            return max(base_conf - 0.05, 0.0)
+        return base_conf
+
+    # Decision cascade (matches model_selection_engine.md spec)
+    if abs_score >= score_a_threshold and momentum > reversal:
+        return {
+            "model": "A",
+            "confidence": _vol_adjust(0.85, "A"),
+            "backup_model": "B",
+            "reason": f"strong_score({abs_score:.2f})_momentum({momentum}>{reversal})",
+            "volatility": volatility,
+        }
+
+    if bscore >= breakout_score_threshold:
+        return {
+            "model": "B",
+            "confidence": _vol_adjust(0.75, "B"),
+            "backup_model": "C",
+            "reason": f"breakout_score({bscore:.2f})>={breakout_score_threshold}",
+            "volatility": volatility,
+        }
+
+    if reversal >= momentum and reversal > 0:
+        return {
+            "model": "C",
+            "confidence": _vol_adjust(0.70, "C"),
+            "backup_model": "B",
+            "reason": f"reversal({reversal})>=momentum({momentum})",
+            "volatility": volatility,
+        }
+
+    if wyckoff in ("accumulation", "distribution"):
+        return {
+            "model": "C",
+            "confidence": _vol_adjust(0.65, "C"),
+            "backup_model": "B",
+            "reason": f"wyckoff_{wyckoff}",
+            "volatility": volatility,
+        }
+
+    # Default: use volatility to break the tie
+    if volatility == "high":
+        return {
+            "model": "B",
+            "confidence": _vol_adjust(0.60, "B"),
+            "backup_model": "C",
+            "reason": "default_high_vol_breakout",
+            "volatility": volatility,
+        }
+    if volatility == "low":
+        return {
+            "model": "C",
+            "confidence": _vol_adjust(0.60, "C"),
+            "backup_model": "B",
+            "reason": "default_low_vol_retrace",
+            "volatility": volatility,
+        }
+
+    # Medium volatility default
+    return {
+        "model": "B",
+        "confidence": 0.60,
+        "backup_model": "C",
+        "reason": "default_breakout",
+        "volatility": volatility,
+    }
+
+
+def compute_selected_model(
+    df: pd.DataFrame,
+    signal: Dict[str, Optional[str]],
+    *,
+    strong_patterns_hit: Optional[List[str]] = None,
+    breakout_score: Optional[float] = None,
+    wyckoff_phase: Optional[str] = None,
+    spread: Optional[float] = None,
+    rr: Optional[float] = None,
+    symbol: Optional[str] = None,
+    cfg: object = None,
+) -> Dict[str, object]:
+    """Run the MSE and compute entry levels with the selected model.
+
+    Returns a dict with:
+        selection: dict     — output of select_model() + breakout_score
+        primary: dict       — entry/stop/tp from the selected model
+        backup: dict|None   — entry/stop/tp from the backup model (if available)
+    """
+    score = float(signal.get("score", 0.0)) if isinstance(signal, dict) else 0.0
+    hits = list(strong_patterns_hit or [])
+
+    # Compute ATR ratio = ATR / price for volatility classification
+    atr_ratio = None
+    try:
+        atr_val = _compute_atr(df, period=14)
+        if atr_val and len(df) > 0:
+            price = float(df["close"].iloc[-1])
+            if price > 0:
+                atr_ratio = atr_val / price
+    except Exception:
+        pass
+
+    # Auto-compute breakout_score from the signal candle when not provided
+    if breakout_score is None:
+        breakout_score = _compute_breakout_score(df, signal)
+
+    selection = select_model(
+        score=score,
+        strong_patterns_hit=hits,
+        breakout_score=breakout_score,
+        wyckoff_phase=wyckoff_phase,
+        atr_ratio=atr_ratio,
+        cfg=cfg,
+    )
+    # Attach the computed breakout_score for audit visibility
+    selection["breakout_score"] = breakout_score
+
+    model = selection["model"]
+    backup_model = selection.get("backup_model")
+
+    # Compute reflexive RR from MSE context (unless caller passed an explicit rr)
+    if rr is None:
+        _cfg = cfg or config
+        base_rr = float(getattr(_cfg, "MSE_RR_BASE", 2.0))
+        reflexive_rr = _compute_reflexive_rr(
+            base_rr,
+            score=score,
+            confidence=selection.get("confidence", 0.60),
+            volatility=selection.get("volatility", "medium"),
+            model=model,
+            cfg=_cfg,
+        )
+        selection["reflexive_rr"] = reflexive_rr
+    else:
+        reflexive_rr = rr
+        selection["reflexive_rr"] = reflexive_rr
+
+    compute_fns = {
+        "A": compute_model_a_close,
+        "B": compute_model_b_breakout,
+        "C": compute_model_c_retrace,
+    }
+
+    primary_fn = compute_fns.get(model, compute_model_b_breakout)
+    primary = primary_fn(df, signal, spread=spread, rr=reflexive_rr, symbol=symbol)
+
+    backup = None
+    if backup_model and backup_model in compute_fns:
+        backup_fn = compute_fns[backup_model]
+        backup = backup_fn(df, signal, spread=spread, rr=reflexive_rr, symbol=symbol)
+
+    return {
+        "selection": selection,
+        "primary": primary,
+        "backup": backup,
+    }
 
 
 def _load_bars(path: str) -> pd.DataFrame:
@@ -811,10 +1564,18 @@ def run_report_for_bars(bars_path: str, chat_id: str, bot_token: str, *, persist
     except Exception as e:
         return {'sent': False, 'error': f'load_failed: {e}'}
 
+    # Closed-candle rule: drop the forming bar before pattern detection so that
+    # incomplete candles never influence signals or MSE entry levels.
+    if "time" in df.columns:
+        from candlesticks.candlestick_autotrade import pick_last_closed_bar
+        df_closed, _sig_idx, _dropped = pick_last_closed_bar(df)
+        if df_closed is not None and not df_closed.empty:
+            df = df_closed
+
     counts = summarize_latest_patterns(df, window=3)
     signal = generate_signal_from_summary(counts)
 
-    # Attach Model B predicted entry (non-invasive) when enabled
+    # Run MSE to select model and compute primary + backup entry levels
     try:
         # derive symbol from bars_path early to pass into predictor
         try:
@@ -822,12 +1583,53 @@ def run_report_for_bars(bars_path: str, chat_id: str, bot_token: str, *, persist
         except Exception:
             symbol = None
         if getattr(config, 'MODEL_B_PREDICT_ENABLED', True) and isinstance(signal, dict):
-            pred = compute_model_b_breakout(df.tail(200), signal, symbol=symbol)
-            if pred:
-                # attach under a new list so multiple predictors can co-exist
-                signal.setdefault('predicted_entries', []).append(pred)
+            # Extract CDL pattern names from top_patterns so the MSE can
+            # correctly score momentum vs reversal patterns (fixes dead path)
+            pattern_hits: List[str] = []
+            try:
+                top_raw = signal.get('top_patterns') or ''
+                for _item in str(top_raw).split(','):
+                    _item = _item.strip()
+                    if not _item:
+                        continue
+                    _name = _item.split(':')[0].strip().upper()
+                    if _name:
+                        pattern_hits.append(_name)
+            except Exception:
+                pass
+
+            mse = compute_selected_model(
+                df.tail(200), signal,
+                strong_patterns_hit=pattern_hits,
+                symbol=symbol,
+            )
+            if mse:
+                signal['model_selection'] = mse.get('selection')
+                primary = mse.get('primary')
+                if primary:
+                    signal.setdefault('predicted_entries', []).append(primary)
+                # Append backup entry so traders see the alternative level
+                backup = mse.get('backup')
+                if backup:
+                    signal.setdefault('predicted_entries', []).append(backup)
+
+            # Attach pattern classification + narrative recommendation
+            mom_c = _count_pattern_class(pattern_hits, _MOMENTUM_PATTERNS)
+            rev_c = _count_pattern_class(pattern_hits, _REVERSAL_PATTERNS)
+            ind_c = _count_pattern_class(pattern_hits, _INDECISION_PATTERNS)
+            signal['pattern_classification'] = {
+                'momentum': mom_c, 'reversal': rev_c, 'indecision': ind_c,
+            }
+            rec = _build_signal_recommendation(
+                side=signal.get('signal'),
+                pattern_hits=pattern_hits,
+                momentum=mom_c, reversal=rev_c, indecision=ind_c,
+            )
+            signal['signal_recommendation'] = rec
+            if rec.get('suggested_side') == 'wait':
+                signal['classification_hold'] = True
     except Exception:
-        LOG.exception("Model B prediction failed (non-fatal)")
+        LOG.exception("Model prediction failed (non-fatal)")
 
     report = build_report(df.tail(200), counts, signal)
 
@@ -932,37 +1734,7 @@ def _build_html_signal_from_summary(bars_path: str, signal: dict, report_text: s
     top = signal.get('top_patterns')
     reason = signal.get('reason')
 
-    def humanize(code: str) -> str:
-        if not code:
-            return code
-        s = str(code).upper()
-        if s.startswith('CDL'):
-            s = s[3:]
-        # common mappings for nicer display
-        common = {
-            'LONGLEGGEDDOJI': 'LongLeggedDoji',
-            'DOJI': 'Doji',
-            'HARAMI': 'Harami',
-            'HARAMICROSS': 'HaramiCross',
-            'TAKURI': 'Takuri',
-            'HAMMER': 'Hammer',
-            'CLOSINGMARUBOZU': 'ClosingMarubozu',
-            'ENGULFING': 'Engulfing',
-            'DRAGONFLYDOJI': 'DragonflyDoji',
-            'SPINNINGTOP': 'SpinningTop',
-            'MORNINGSTAR': 'MorningStar',
-            'EVENINGSTAR': 'EveningStar',
-            'PIERCING': 'Piercing',
-            'HANGINGMAN': 'HangingMan',
-            'SHOOTINGSTAR': 'ShootingStar',
-            'MARUBOZU': 'Marubozu',
-            'TAKURI': 'Takuri',
-            'HAMMER': 'Hammer',
-        }
-        if s in common:
-            return common[s]
-        # fallback: title-case the lower string
-        return s.lower().capitalize()
+    humanize = _humanize_pattern
 
     # extract rows scanned from report_text
     rows_scanned = None
@@ -991,6 +1763,54 @@ def _build_html_signal_from_summary(bars_path: str, signal: dict, report_text: s
     lines.append(f'📊 <b>Action:</b> <b><code>{_escape_html(action)}</code></b>')
     lines.append(f'🏆 <b>Score:</b> <code>{_escape_html(score_display)}</code>')
     lines.append(f'🕒 <b>Time:</b> <code>{_escape_html(nowstr)}</code>')
+
+    # Model Selection Engine info
+    try:
+        msel = signal.get('model_selection') if isinstance(signal, dict) else None
+        if msel and isinstance(msel, dict):
+            m_name = {"A": "A (Close)", "B": "B (Breakout)", "C": "C (Retrace)"}.get(
+                str(msel.get("model", "")), str(msel.get("model", ""))
+            )
+            m_conf = msel.get("confidence")
+            m_backup = msel.get("backup_model")
+            conf_str = f"{float(m_conf):.2f}" if m_conf is not None else "N/A"
+            lines.append(f'🧠 <b>Model:</b> <code>{_escape_html(m_name)}</code>')
+            lines.append(f'📊 <b>Confidence:</b> <code>{_escape_html(conf_str)}</code>')
+            if m_backup:
+                b_name = {"A": "A (Close)", "B": "B (Breakout)", "C": "C (Retrace)"}.get(
+                    str(m_backup), str(m_backup)
+                )
+                lines.append(f'🔁 <b>Backup:</b> <code>{_escape_html(b_name)}</code>')
+            m_vol = msel.get("volatility")
+            if m_vol:
+                vol_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(m_vol, "⚪")
+                lines.append(f'{vol_icon} <b>Volatility:</b> <code>{_escape_html(m_vol.capitalize())}</code>')
+            m_bscore = msel.get("breakout_score")
+            if m_bscore is not None:
+                lines.append(f'💥 <b>Breakout Score:</b> <code>{float(m_bscore):.2f}</code>')
+            m_rrr = msel.get("reflexive_rr")
+            if m_rrr is not None:
+                lines.append(f'🎯 <b>RR (reflexive):</b> <code>{float(m_rrr):.2f}</code>')
+    except Exception:
+        pass
+
+    # Signal recommendation (narrative from pattern classification)
+    try:
+        rec = signal.get('signal_recommendation') if isinstance(signal, dict) else None
+        if rec and isinstance(rec, dict):
+            align = rec.get('alignment', 'neutral')
+            label = rec.get('label', '')
+            because = rec.get('because', '')
+            suggested = rec.get('suggested_side', '')
+            icon = {'confirms': '✅', 'contradicts': '⚠️', 'neutral': '⚪'}.get(align, '⚪')
+            lines.append(f'{icon} <b>{_escape_html(label)}</b> — <i>{_escape_html(because)}</i>')
+            sig_side = str(signal.get('signal') or '').lower()
+            if suggested == 'wait' or (suggested and suggested != sig_side):
+                side_txt = suggested.upper() if suggested != 'wait' else 'WAIT / No trade'
+                lines.append(f'💡 <b>Suggested side:</b> <code>{_escape_html(side_txt)}</code>')
+    except Exception:
+        pass
+
     lines.append("")
     # Top patterns numbered
     lines.append('⭐ <b>Top Patterns</b>')

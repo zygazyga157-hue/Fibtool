@@ -236,6 +236,114 @@ def detect_sell_bearish_acceptance_downtrend(candle: dict, zone: dict, downtrend
         return False
 
 
+def compute_elapsed_bar_anchor(df: pd.DataFrame, lookback: int = 20) -> dict:
+    """Compute a simple impulse anchor for time/price squaring.
+
+    Returns:
+      anchor_idx: int
+      anchor_price: float
+      anchor_time: str|None
+      anchor_kind: str
+      bars_elapsed: int
+    """
+    try:
+        n = int(len(df))
+        if n <= 1:
+            return {
+                'anchor_idx': 0,
+                'anchor_price': float(df['close'].iloc[-1]) if n == 1 else 0.0,
+                'anchor_time': str(df['time'].iloc[-1]) if n == 1 and 'time' in df else None,
+                'anchor_kind': 'fallback',
+                'bars_elapsed': 1,
+            }
+
+        lb = int(lookback) if int(lookback) > 0 else 20
+        lb = min(lb, n - 1)
+        start = max(0, n - 1 - lb)
+
+        # Direction bias: use SMA50 slope when possible; fallback to 10-bar delta.
+        direction = 'UP'
+        try:
+            sma50 = df['close'].rolling(50).mean().dropna()
+            if len(sma50) >= 10:
+                slope = float(sma50.iloc[-1] - sma50.iloc[-10])
+                direction = 'UP' if slope >= 0 else 'DOWN'
+            else:
+                k = min(10, n - 1)
+                direction = 'UP' if float(df['close'].iloc[-1] - df['close'].iloc[-1 - k]) >= 0 else 'DOWN'
+        except Exception:
+            pass
+
+        anchor_idx = start
+        anchor_price = float(df['close'].iloc[start])
+        anchor_kind = 'fallback'
+
+        hi = df['high']
+        lo = df['low']
+        # Search last swing extreme in the lookback window (simple 1-bar fractal).
+        if direction == 'UP':
+            found = False
+            for i in range(n - 2, max(start, 1), -1):
+                try:
+                    if float(lo.iloc[i]) < float(lo.iloc[i - 1]) and float(lo.iloc[i]) <= float(lo.iloc[i + 1]):
+                        anchor_idx = i
+                        anchor_price = float(lo.iloc[i])
+                        anchor_kind = 'swing_low'
+                        found = True
+                        break
+                except Exception:
+                    continue
+            if not found:
+                try:
+                    sub = lo.iloc[start:n - 1]
+                    anchor_idx = int(sub.idxmin())
+                    anchor_price = float(lo.iloc[anchor_idx])
+                    anchor_kind = 'range_low'
+                except Exception:
+                    pass
+        else:
+            found = False
+            for i in range(n - 2, max(start, 1), -1):
+                try:
+                    if float(hi.iloc[i]) > float(hi.iloc[i - 1]) and float(hi.iloc[i]) >= float(hi.iloc[i + 1]):
+                        anchor_idx = i
+                        anchor_price = float(hi.iloc[i])
+                        anchor_kind = 'swing_high'
+                        found = True
+                        break
+                except Exception:
+                    continue
+            if not found:
+                try:
+                    sub = hi.iloc[start:n - 1]
+                    anchor_idx = int(sub.idxmax())
+                    anchor_price = float(hi.iloc[anchor_idx])
+                    anchor_kind = 'range_high'
+                except Exception:
+                    pass
+
+        bars_elapsed = (n - 1) - int(anchor_idx)
+        if bars_elapsed <= 0:
+            bars_elapsed = 1
+
+        anchor_time = None
+        try:
+            if 'time' in df.columns:
+                anchor_time = str(df['time'].iloc[int(anchor_idx)])
+        except Exception:
+            anchor_time = None
+
+        return {
+            'anchor_idx': int(anchor_idx),
+            'anchor_price': float(anchor_price),
+            'anchor_time': anchor_time,
+            'anchor_kind': str(anchor_kind),
+            'bars_elapsed': int(bars_elapsed),
+        }
+    except Exception:
+        return {'anchor_idx': 0, 'anchor_price': 0.0, 'anchor_time': None, 'anchor_kind': 'fallback', 'bars_elapsed': 1}
+
+
 def generate_signal(context: Dict[str, Any], cfg=None) -> Optional[str]:
     if cfg is None:
         try:
@@ -432,10 +540,10 @@ def session_for_utc(dt: Optional[datetime] = None) -> str:
     Returns one of: 'ASIA', 'LONDON', 'NEW_YORK', 'DEAD_ZONE'.
     
     Session windows (UTC):
-      ASIA:     21:00 - 06:59 (Asian overlaps with late NY and early London)
-      LONDON:   07:00 - 16:59 (London and NY overlap 13:00-16:59)
-      NEW_YORK: 13:00 - 21:59 (NY afternoon into evening)
-      DEAD_ZONE: 17:00 - 20:59 (thin overlap / pre-NY, post-London)
+      ASIA:      21:00 - 06:59
+      LONDON:    07:00 - 12:59
+      NEW_YORK:  13:00 - 16:59
+      DEAD_ZONE: 17:00 - 20:59
     """
     # Check for env var override first
     try:
@@ -448,16 +556,17 @@ def session_for_utc(dt: Optional[datetime] = None) -> str:
     
     try:
         if dt is None:
-            dt = datetime.utcnow()
+            dt = datetime.now(timezone.utc)
+        if getattr(dt, 'tzinfo', None) is not None:
+            dt = dt.astimezone(timezone.utc)
         h = int(dt.hour)
-        # Corrected windows to avoid DST issues and overlap properly:
         if h >= 21 or h < 7:      # 21:00-23:59 and 00:00-06:59
             return 'ASIA'
-        if 7 <= h < 17:           # 07:00-16:59 (covers London and early NY)
+        if 7 <= h < 13:           # 07:00-12:59
             return 'LONDON'
-        if 13 <= h < 22:          # 13:00-21:59 (covers NY) — overlaps with LONDON 13-16
-            return 'NEW_YORK'      # prefer NY if in overlap
-        return 'DEAD_ZONE'         # 17:00-20:59
+        if 13 <= h < 17:          # 13:00-16:59
+            return 'NEW_YORK'
+        return 'DEAD_ZONE'        # 17:00-20:59
     except Exception:
         return 'NEW_YORK'
 
@@ -564,13 +673,24 @@ def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, ha
 
     If `session=='auto'`, the session will be detected from current UTC time.
     """
-    # allow auto-detection of session
-    if isinstance(session, str) and session.lower() == 'auto':
-        session = session_for_utc()
     try:
         import config as cfg_mod
     except Exception:
         cfg_mod = None
+    # allow auto-detection of session (env override > config override > UTC windows)
+    if isinstance(session, str) and session.lower() == 'auto':
+        try:
+            env_override = os.getenv('HARMONIC_SESSION')
+            if env_override and env_override.upper() in ('ASIA', 'LONDON', 'NEW_YORK', 'DEAD_ZONE'):
+                session = env_override.upper()
+            else:
+                cfg_override = getattr(cfg_mod, 'HARMONIC_SESSION', None) if cfg_mod else None
+                if cfg_override and str(cfg_override).upper() in ('ASIA', 'LONDON', 'NEW_YORK', 'DEAD_ZONE') and str(cfg_override).lower() != 'auto':
+                    session = str(cfg_override).upper()
+                else:
+                    session = session_for_utc()
+        except Exception:
+            session = session_for_utc()
     df = fetch_bars_mt5(symbol, timeframe, count)
     atr = compute_atr(df)
     # mean ATR over previous window (use 50 periods as baseline)
@@ -590,18 +710,26 @@ def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, ha
     if regime == 'UNKNOWN':
         regime_dampen = getattr(cfg_mod, 'HARMONIC_REGIME_DAMPEN_UNKNOWN', 0.5) if cfg_mod else 0.5
 
-    # Simple price_move: latest close - previous close
-    try:
-        price_move = float(df['close'].iloc[-1] - df['close'].iloc[-2])
-    except Exception:
-        price_move = 0.0
+    # Latest close and last-bar move (reference)
     try:
         close = float(df['close'].iloc[-1])
     except Exception:
         close = 0.0
+    try:
+        last_bar_move = float(df['close'].iloc[-1] - df['close'].iloc[-2])
+    except Exception:
+        last_bar_move = 0.0
 
-    # bars_elapsed placeholder: 1 (could be replaced by pivot detection)
-    bars_elapsed = 1
+    # Real elapsed-bar anchor for time/price squaring.
+    try:
+        bars_window = int(getattr(cfg_mod, 'HARMONIC_BARS_ELAPSED_WINDOW', 20)) if cfg_mod else 20
+    except Exception:
+        bars_window = 20
+    anchor = compute_elapsed_bar_anchor(df, lookback=bars_window)
+    bars_elapsed = int(anchor.get('bars_elapsed', 1) or 1)
+    anchor_price = float(anchor.get('anchor_price', close) or close)
+    anchor_time = anchor.get('anchor_time')
+    anchor_kind = anchor.get('anchor_kind')
 
     # Detect harmonic hit: if explicit harmonics provided as price levels use them,
     # otherwise try to load base units from docs/data/market_harmonics.json and compute levels
@@ -651,7 +779,12 @@ def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, ha
     except Exception:
         harmonic_hit = False
 
-    squared = harmonic_square(price_move, bars_elapsed, harmonic_hit)
+    price_move_anchor = float(close) - float(anchor_price)
+    try:
+        price_move_points = abs(float(price_move_anchor)) / float(point_value) if float(point_value) != 0 else abs(float(price_move_anchor))
+    except Exception:
+        price_move_points = abs(float(price_move_anchor))
+    squared = harmonic_square(price_move_points, bars_elapsed, harmonic_hit)
     # Use per-instrument normalized volume: median-based to avoid outliers
     weighted_score = 0.0
     resonance_strength = 'WEAK'
@@ -788,7 +921,14 @@ def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, ha
         'meta': {
             'symbol': symbol,
             'timeframe': timeframe,
-            'price_move': price_move,
+            'price_move': price_move_anchor,
+            'price_move_last_bar': last_bar_move,
+            'price_move_anchor': price_move_anchor,
+            'price_move_points': price_move_points,
+            'bars_elapsed': bars_elapsed,
+            'anchor_price': anchor_price,
+            'anchor_time': anchor_time,
+            'anchor_kind': anchor_kind,
             'atr': atr,
             'atr_mean': atr_mean,
             'volume': vol,

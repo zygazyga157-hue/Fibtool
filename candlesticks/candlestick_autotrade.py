@@ -25,10 +25,19 @@ import pandas as pd
 
 from candlesticks.candlestick_signals import (
     compute_model_b_breakout,
+    compute_model_a_close,
+    compute_model_c_retrace,
+    compute_selected_model,
+    select_model,
     generate_signal_from_summary,
     summarize_latest_patterns,
     _model_b_profile,
     _pip_size_for_symbol,
+    _count_pattern_class,
+    _build_signal_recommendation,
+    _MOMENTUM_PATTERNS,
+    _REVERSAL_PATTERNS,
+    _INDECISION_PATTERNS,
 )
 
 
@@ -71,6 +80,47 @@ def _cfg_get(cfg: Any, name: str, default: Any) -> Any:
         return getattr(cfg, name, default)
     except Exception:
         return default
+
+
+def _detect_wyckoff_phase(df: pd.DataFrame, lookback: int = 100) -> Optional[str]:
+    """Lightweight Wyckoff phase detector.
+
+    Returns 'accumulation', 'distribution', or None.
+    Mirrors the logic in FibSquareStrategy.detect_wyckoff_patterns but without
+    the class dependency so it can be used inline here.
+    """
+    try:
+        if df is None or len(df) < lookback:
+            return None
+        section = df.iloc[-lookback:]
+        price_range = float(section["high"].max() - section["low"].min())
+        low_min = float(section["low"].min())
+        if low_min <= 0:
+            return None
+        range_pct = price_range / low_min * 100.0
+        is_sideways = range_pct < 5.0
+        if not is_sideways:
+            return None
+
+        # Trend: compare first close to close 20 bars ago
+        is_downtrend = float(section["close"].iloc[0]) > float(section["close"].iloc[-20])
+
+        # Higher lows / lower highs across 3 equal segments
+        seg = len(section) // 3
+        if seg < 5:
+            return None
+        lows = [float(section.iloc[i * seg:(i + 1) * seg]["low"].min()) for i in range(3)]
+        highs = [float(section.iloc[i * seg:(i + 1) * seg]["high"].max()) for i in range(3)]
+        higher_lows = lows[0] < lows[1] < lows[2]
+        lower_highs = highs[0] > highs[1] > highs[2]
+
+        if is_downtrend and higher_lows:
+            return "accumulation"
+        if not is_downtrend and lower_highs:
+            return "distribution"
+        return None
+    except Exception:
+        return None
 
 
 def _utcnow() -> datetime:
@@ -365,6 +415,13 @@ class AutotradeCandidate:
     sl_dist_atr: Optional[float] = None
     entry_dist_atr: Optional[float] = None
     order_kind_chosen: Optional[str] = None  # stop/market
+    wyckoff_phase: Optional[str] = None  # accumulation/distribution/None
+    model_selected: Optional[str] = None  # A/B/C
+    model_confidence: Optional[float] = None
+    model_backup: Optional[str] = None
+    model_reason: Optional[str] = None
+    breakout_score: Optional[float] = None
+    reflexive_rr: Optional[float] = None
 
     def to_dict(self) -> dict:
         return {k: getattr(self, k) for k in self.__dataclass_fields__.keys()}
@@ -508,6 +565,23 @@ def evaluate_autotrade_candidate(
             _save_json_atomic(str(state_path), state)
         return cand
 
+    # Classification hold: suppress trades when indecision dominates
+    if bool(_cfg_get(cfg, "CANDLE_AUTOTRADE_CLASSIFICATION_HOLD", True)):
+        _mom = _count_pattern_class(hits, _MOMENTUM_PATTERNS)
+        _rev = _count_pattern_class(hits, _REVERSAL_PATTERNS)
+        _ind = _count_pattern_class(hits, _INDECISION_PATTERNS)
+        _rec = _build_signal_recommendation(
+            side=action, pattern_hits=hits,
+            momentum=_mom, reversal=_rev, indecision=_ind,
+        )
+        cand.signal_recommendation = _rec
+        if _rec.get("suggested_side") == "wait":
+            cand.reason = "classification_hold_indecision"
+            if isinstance(state, dict):
+                state[symbol] = {"last_bar_time": cand.bar_time, **(sym_state if isinstance(sym_state, dict) else {})}
+                _save_json_atomic(str(state_path), state)
+            return cand
+
     # Market condition gates
     try:
         bid_f = float(bid)
@@ -558,10 +632,32 @@ def evaluate_autotrade_candidate(
                 _save_json_atomic(str(state_path), state)
             return cand
 
-    # Trade construction (Model B)
-    pred = compute_model_b_breakout(df_closed.tail(200), {"signal": action}, spread=spread, symbol=symbol)
+    # Trade construction via Model Selection Engine
+    wyckoff_phase = _detect_wyckoff_phase(df_closed.tail(200))
+    cand.wyckoff_phase = wyckoff_phase
+
+    mse_signal = {"signal": action, "score": score}
+    mse_result = compute_selected_model(
+        df_closed.tail(200),
+        mse_signal,
+        strong_patterns_hit=hits,
+        wyckoff_phase=wyckoff_phase,
+        spread=spread,
+        symbol=symbol,
+        cfg=cfg,
+    )
+    sel = mse_result.get("selection", {})
+    pred = mse_result.get("primary", {})
+
+    cand.model_selected = sel.get("model")
+    cand.model_confidence = sel.get("confidence")
+    cand.model_backup = sel.get("backup_model")
+    cand.model_reason = sel.get("reason")
+    cand.breakout_score = sel.get("breakout_score")
+    cand.reflexive_rr = sel.get("reflexive_rr")
+
     if not pred:
-        cand.reason = "model_b_missing"
+        cand.reason = "model_missing"
         if isinstance(state, dict):
             state[symbol] = {"last_bar_time": cand.bar_time, **(sym_state if isinstance(sym_state, dict) else {})}
             _save_json_atomic(str(state_path), state)
@@ -579,7 +675,7 @@ def evaluate_autotrade_candidate(
         tp_f = float(tp)
         buf_f = float(buf or 0.0)
     except Exception:
-        cand.reason = "model_b_bad_levels"
+        cand.reason = "model_bad_levels"
         if isinstance(state, dict):
             state[symbol] = {"last_bar_time": cand.bar_time, **(sym_state if isinstance(sym_state, dict) else {})}
             _save_json_atomic(str(state_path), state)
@@ -645,14 +741,23 @@ def evaluate_autotrade_candidate(
                 _save_json_atomic(str(state_path), state)
             return cand
 
-    # Order kind classification
-    order_kind, ok_reason = choose_order_kind_for_breakout(side, entry_f, bid_f, ask_f, buf_f, late_mult)
-    if order_kind is None:
-        cand.reason = ok_reason
-        if isinstance(state, dict):
-            state[symbol] = {"last_bar_time": cand.bar_time, **(sym_state if isinstance(sym_state, dict) else {})}
-            _save_json_atomic(str(state_path), state)
-        return cand
+    # Order kind classification — model-aware
+    selected_model = sel.get("model", "B")
+    if selected_model == "A":
+        # Model A: immediate entry at close — always market order
+        order_kind = "market"
+    elif selected_model == "C":
+        # Model C: retrace/limit entry — limit order
+        order_kind = "limit"
+    else:
+        # Model B: breakout — stop or market depending on where price is
+        order_kind, ok_reason = choose_order_kind_for_breakout(side, entry_f, bid_f, ask_f, buf_f, late_mult)
+        if order_kind is None:
+            cand.reason = ok_reason
+            if isinstance(state, dict):
+                state[symbol] = {"last_bar_time": cand.bar_time, **(sym_state if isinstance(sym_state, dict) else {})}
+                _save_json_atomic(str(state_path), state)
+            return cand
 
     # Success: fill candidate details
     cand.eligible = True
@@ -725,6 +830,11 @@ def run_autotrade_for_symbol(
             "sl_dist_atr": None,
             "entry_dist_atr": None,
             "order_kind_chosen": None,
+            "wyckoff_phase": None,
+            "model_selected": None,
+            "model_confidence": None,
+            "model_backup": None,
+            "model_reason": None,
             "dry_run": dry_run,
             "execution": execution,
         }
@@ -808,6 +918,11 @@ def run_autotrade_for_symbol(
         "sl_dist_atr": cand.sl_dist_atr,
         "entry_dist_atr": cand.entry_dist_atr,
         "order_kind_chosen": cand.order_kind_chosen,
+        "wyckoff_phase": cand.wyckoff_phase,
+        "model_selected": cand.model_selected,
+        "model_confidence": cand.model_confidence,
+        "model_backup": cand.model_backup,
+        "model_reason": cand.model_reason,
         "dry_run": dry_run,
     }
 
@@ -828,7 +943,8 @@ def run_autotrade_for_symbol(
             price = cand.entry
             if order_kind == "market":
                 price = ask if cand.side == "long" else bid
-            comment = f"candle_modelb_{order_kind}"
+            model_tag = (cand.model_selected or "b").lower()
+            comment = f"candle_model{model_tag}_{order_kind}"
 
             try:
                 exec_res = send_order(

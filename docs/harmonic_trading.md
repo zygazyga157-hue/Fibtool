@@ -267,6 +267,23 @@ All existing global gates remain active before direction selection:
 - weighted score threshold
 - confirmations threshold
 
+Additional implementation details:
+- Session detection (`session_for_utc`, used when session is `auto`):
+  - `HARMONIC_SESSION` env var overrides when set to `ASIA/LONDON/NEW_YORK/DEAD_ZONE`
+  - otherwise `config.HARMONIC_SESSION` overrides when set to `ASIA/LONDON/NEW_YORK/DEAD_ZONE`
+  - windows (UTC):
+    - ASIA: 21:00-06:59
+    - LONDON: 07:00-12:59
+    - NEW_YORK: 13:00-16:59
+    - DEAD_ZONE: 17:00-20:59
+- Time-price squaring anchor:
+  - `bars_elapsed` is computed from an anchor within `HARMONIC_BARS_ELAPSED_WINDOW` bars
+  - anchor selection uses SMA50 slope bias (fallback: 10-bar delta):
+    - UP: last swing low (1-bar fractal) else range low
+    - DOWN: last swing high (1-bar fractal) else range high
+  - `price_move_points = abs(close - anchor_price) / point`
+  - `squared = harmonic_square(price_move_points, bars_elapsed, harmonic_hit)`
+
 ---
 
 ## 15. Functionality Notes & Reference Code

@@ -1,4 +1,4 @@
-MT5_LOGIN=81614422
+MT5_LOGIN=81616483
 MT5_PASSWORD='Zyga_157' 
 MT5_SERVER='Exness-MT5Trial10'
 MT5_PATH='C:/Program Files/MetaTrader 5/terminal64.exe'
@@ -34,7 +34,7 @@ CANDLE_AUTOTRADE_ENABLED = True
 CANDLE_AUTOTRADE_DRY_RUN = False
 # Pattern scoring window and thresholds
 CANDLE_SIGNAL_WINDOW_BARS = 3
-CANDLE_AUTOTRADE_MIN_ABS_SCORE = 1.0
+CANDLE_AUTOTRADE_MIN_ABS_SCORE = 2.0
 # Strong-only patterns (directional) that must be present + fresh to qualify for auto-trade
 CANDLE_AUTOTRADE_REQUIRED_PATTERNS = [
     # Top-ranked / strong set from the notebook ranking table
@@ -68,9 +68,9 @@ CANDLE_AUTOTRADE_FRESH_BARS = 1
 # Minimum bars required to compute ATR/patterns safely
 CANDLE_AUTOTRADE_MIN_BARS = 60
 # Market-condition filters
-CANDLE_AUTOTRADE_MIN_RANGE_ATR = 0.25
+CANDLE_AUTOTRADE_MIN_RANGE_ATR = 0.5
 CANDLE_AUTOTRADE_MAX_SPREAD_PIPS_FX = 2.5
-CANDLE_AUTOTRADE_MAX_SPREAD_ATR_FRAC = 0.08
+CANDLE_AUTOTRADE_MAX_SPREAD_ATR_FRAC = 0.04
 # Pending entry sanity
 CANDLE_AUTOTRADE_MAX_ENTRY_DISTANCE_ATR = 1.5
 # If breakout already happened, allow market entry only if close enough to the planned entry.
@@ -79,6 +79,8 @@ CANDLE_AUTOTRADE_LATE_ENTRY_MAX_BUFFER_MULT = 1.0
 CANDLE_AUTOTRADE_COOLDOWN_SECONDS = 3600
 # State file used for per-symbol dedupe/cooldown
 CANDLE_AUTOTRADE_STATE_PATH = "outputs/candlestick_autotrade_state.json"
+# When True, suppress trades when indecision patterns dominate (no directional edge)
+CANDLE_AUTOTRADE_CLASSIFICATION_HOLD = True
 # Liquidity windows (DST-safe via zoneinfo). Applied to fx/metals/indices; crypto remains 24/7.
 CANDLE_AUTOTRADE_LONDON_TZ = "Europe/London"
 CANDLE_AUTOTRADE_LONDON_START = "07:00"
@@ -106,7 +108,7 @@ HARMONIC_VOLUME_WINDOW = 50             # bars to use for volume average (use me
 HARMONIC_REGIME_DAMPEN_UNKNOWN = 0.5   # multiply weighted_score by this if regime==UNKNOWN
 HARMONIC_REQUIRE_SQUARED = True        # if True, require harmonic_square; if False, use as optional damping (0.8x)
 HARMONIC_SQUARED_DAMPING = 0.8          # damping factor if harmonic_square is False but REQUIRE_SQUARED==False
-HARMONIC_BARS_ELAPSED_WINDOW = 20       # bars to look back for harmonic hit detection (used if REQUIRE_SQUARED==True)
+HARMONIC_BARS_ELAPSED_WINDOW = 20       # lookback window for elapsed-bar anchor used in time/price squaring
 HARMONIC_MIN_CONFIRMATIONS = 2          # minimum confirmations to allow signal (harmonic_hit counts as 1, sma50 as +1)
 HARMONIC_WEIGHTED_SCORE_MIN = 0.7      # minimum weighted_score to generate signal (WEAK=0.2, so threshold allows weak signals)
 # Whether to allow signals during EXTREME volatility. Default False (blocks EXTREME).
@@ -133,7 +135,6 @@ MODEL_B_CANCEL_AFTER_BARS = 6           # informational for pending-order lifecy
 # Shared defaults used when a profile-specific value is not declared.
 MODEL_B_ESTIMATED_SPREAD = 0.05         # fallback spread (price units)
 MODEL_B_SAFETY_MARGIN = 0.02            # fallback safety buffer (price units)
-MODEL_B_RR = 2.0                        # default reward:risk
 MODEL_B_ATR_BUFFER_MULT_DEFAULT = 0.10
 MODEL_B_MIN_BUFFER_TICKS_DEFAULT = 2
 MODEL_B_MIN_RISK_ATR_MULT_DEFAULT = 0.30
@@ -165,10 +166,22 @@ MODEL_B_MIN_RISK_TICKS_FX = 6
 MODEL_B_MIN_RISK_TICKS_CRYPTO = 20
 MODEL_B_MIN_RISK_TICKS_INDICES = 14
 
-# Reward:risk profile overrides
-MODEL_B_RR_METALS = 2.1
-MODEL_B_RR_CRYPTO = 2.2
-MODEL_B_RR_INDICES = 1.9
+# Model C (retrace) configuration
+MODEL_C_RETRACE_RATIO = 0.618  # 0.5 = midpoint, 0.618 = deeper Fibonacci retracement
+
+# Model Selection Engine (MSE) thresholds
+MSE_SCORE_A_THRESHOLD = 3.5       # abs(score) >= this + momentum > reversal → Model A
+MSE_SCORE_B_THRESHOLD = 2.0       # unused by cascade but reserved for future gating
+MSE_BREAKOUT_SCORE_THRESHOLD = 0.6  # breakout_score >= this → Model B
+
+# ATR / Volatility thresholds for MSE
+MSE_ATR_RATIO_HIGH = 0.02         # atr_ratio >= this → High volatility (breakouts likely)
+MSE_ATR_RATIO_LOW = 0.005         # atr_ratio <= this → Low volatility (compression, retrace)
+
+# Reflexive RR — single base and bounds
+MSE_RR_BASE = 2.0                 # starting RR before reflexive multipliers
+MSE_RR_FLOOR = 1.2                # minimum reflexive RR (conservative)
+MSE_RR_CEILING = 4.5              # maximum reflexive RR (aggressive)
 
 # Asia Sweep strategy runtime environment variables (can be overridden via env)
 import os
@@ -203,6 +216,22 @@ ASIA_SWEEP_MSS_LOOKBACK = int(os.environ.get('ASIA_SWEEP_MSS_LOOKBACK', '3'))
 ASIA_SWEEP_CONFIRM_WINDOW_BARS = int(os.environ.get('ASIA_SWEEP_CONFIRM_WINDOW_BARS', '12'))  # M5 bars
 # MSS mode: keep "close" for spec-aligned confirmation (optional future extension).
 ASIA_SWEEP_MSS_MODE = os.environ.get('ASIA_SWEEP_MSS_MODE', 'close').strip().lower()
+
+# True M5 persistence for Asia sweep (keeps the rest of Fibtool on M15 while MSS stays mechanically correct).
+ASIA_SWEEP_M5_ENABLED = os.environ.get('ASIA_SWEEP_M5_ENABLED', '1') in ('1', 'true', 'True', 'yes')
+# Optional: limit M5 fetching to a subset of symbols. Empty => all symbols processed by the collector.
+ASIA_SWEEP_M5_SYMBOLS = os.environ.get('ASIA_SWEEP_M5_SYMBOLS', '')
+ASIA_SWEEP_M5_HISTORY_MONTHS = int(os.environ.get('ASIA_SWEEP_M5_HISTORY_MONTHS', '12'))
+# Fetch a smaller recent M5 window each cycle and merge/dedupe into *_m5.csv
+ASIA_SWEEP_M5_FETCH_BARS_PER_CYCLE = int(os.environ.get('ASIA_SWEEP_M5_FETCH_BARS_PER_CYCLE', '2000'))
+
+# ML gate (optional, fail-closed when enabled)
+ASIA_SWEEP_ML_ENABLED = os.environ.get('ASIA_SWEEP_ML_ENABLED', '0') in ('1', 'true', 'True', 'yes')
+# Can point either to:
+# - a model artifacts dir that contains model.pt, OR
+# - a model root that contains current.json -> active_dir (hot-reload friendly)
+ASIA_SWEEP_ML_MODEL_DIR = os.environ.get('ASIA_SWEEP_ML_MODEL_DIR', 'outputs/models/asia_sweep_mss')
+ASIA_SWEEP_ML_MIN_PROB = float(os.environ.get('ASIA_SWEEP_ML_MIN_PROB', '0.60'))
 
 # Optional pretrade RR override (normally read from outputs/admin_settings.json).
 # Leave empty/unset to use admin settings.

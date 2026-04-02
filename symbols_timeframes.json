@@ -1,13 +1,10 @@
 {
   "symbols": [
     "BTCUSD",
-    "XAUUSD",
-    "XAGUSD",
     "EURUSD",
     "GBPUSD",
     "USDJPY",
-    "AUDUSD",
-    "Wall Street 30"
+    "GBPJPY"
   ],
 
   "timeframes": [

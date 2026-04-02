@@ -21,12 +21,28 @@ sys.path.insert(0, str(ROOT))
 from asia_sweep_london_mss import AsiaSweepStrategy
 
 
-def _make_minute_bars_csv(path, start_dt: datetime, end_dt: datetime):
+def _symbol_slug(symbol: str) -> str:
+    """Match AsiaSweepStrategy's slugging so tests write the right filenames."""
+    try:
+        return ''.join(ch if ch.isalnum() else '_' for ch in str(symbol)).lower().strip('_')
+    except Exception:
+        return str(symbol).replace('/', '_').replace(' ', '_').lower()
+
+
+def _m5_path(out_dir: Path, symbol: str) -> Path:
+    return out_dir / f"{_symbol_slug(symbol)}_m5.csv"
+
+
+def _m15_path(out_dir: Path, symbol: str) -> Path:
+    return out_dir / f"{_symbol_slug(symbol)}_bars.csv"
+
+
+def _make_m5_bars_csv(path, start_dt: datetime, end_dt: datetime):
     rows = []
     t = start_dt
     while t <= end_dt:
         rows.append({'time': t.isoformat(), 'open': 100.0, 'high': 100.0, 'low': 100.0, 'close': 100.0})
-        t = t + timedelta(minutes=1)
+        t = t + timedelta(minutes=5)
     # write CSV
     with open(path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=['time','open','high','low','close'])
@@ -71,7 +87,7 @@ def test_submit_order_writes_csv(tmp_path):
 
 
 def test_pretrade_autostate_blocks_live(tmp_path):
-    # Build minute bars covering Asia session and London so logic can run
+    # Build M5 bars covering Asia session and London so logic can run
     start = datetime(2026, 2, 7, 0, 0)
     end = datetime(2026, 2, 7, 8, 5)
     # build rows
@@ -79,7 +95,7 @@ def test_pretrade_autostate_blocks_live(tmp_path):
     t = start
     while t <= end:
         rows.append({'time': t.isoformat(), 'open': 100.0, 'high': 100.0, 'low': 100.0, 'close': 100.0})
-        t = t + timedelta(minutes=1)
+        t = t + timedelta(minutes=5)
 
     # Make Asia highs large and lows low to produce TP far away
     for r in rows:
@@ -89,18 +105,18 @@ def test_pretrade_autostate_blocks_live(tmp_path):
             r['low'] = 90.0
 
     # craft last block to create sweep_low and bullMSS
-    rows[-6]['low'] = 85.0
-    rows[-1]['close'] = 110.0
+    for r in rows:
+        rt = datetime.fromisoformat(r['time'])
+        if rt.hour == 8 and rt.minute == 0:
+            r['low'] = 85.0  # sweep_low
+            r['high'] = 101.0
+            r['close'] = 110.0  # bullMSS vs prior highs
 
     out = tmp_path / 'outputs'
     out.mkdir()
-    csvp = out / 'EURUSD_bars.csv'
-    # write CSV
-    with open(csvp, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=['time','open','high','low','close'])
-        writer.writeheader()
-        for r in rows:
-            writer.writerow(r)
+    _write_rows_csv(_m5_path(out, 'EURUSD'), rows)
+    # Also provide a minimal M15 file so the strategy has fallback context if needed.
+    _write_rows_csv(_m15_path(out, 'EURUSD'), rows)
 
     s = AsiaSweepStrategy(symbols=['EURUSD'])
     _set_output_paths(s, out)
@@ -125,12 +141,12 @@ def test_pretrade_autostate_blocks_live(tmp_path):
 
 def test_long_setup_uses_071_fib_with_m5_stop_and_asia_tp(tmp_path):
     start = datetime(2026, 2, 7, 0, 0)
-    end = datetime(2026, 2, 7, 8, 4)
+    end = datetime(2026, 2, 7, 8, 0)
     rows = []
     t = start
     while t <= end:
         rows.append({'time': t.isoformat(), 'open': 100.0, 'high': 100.0, 'low': 100.0, 'close': 100.0})
-        t = t + timedelta(minutes=1)
+        t = t + timedelta(minutes=5)
 
     # Asia baseline and a clear AsiaHigh.
     for r in rows:
@@ -150,26 +166,18 @@ def test_long_setup_uses_071_fib_with_m5_stop_and_asia_tp(tmp_path):
             r['low'] = 100.0
             r['close'] = 100.4
 
-    # Current M5 (08:00-08:04): sweep below AsiaLow and close above prior3 highs.
-    curr = {
-        0: (100.4, 101.0, 99.8, 100.2),
-        1: (100.2, 102.0, 99.7, 100.8),
-        2: (100.8, 103.0, 99.6, 101.5),
-        3: (101.5, 104.0, 99.5, 102.2),
-        4: (102.2, 104.0, 99.5, 103.0),
-    }
+    # Current M5 (08:00): sweep below AsiaLow and close above prior3 highs.
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and rt.minute in curr:
-            o, h, l, c = curr[rt.minute]
-            r['open'] = o
-            r['high'] = h
-            r['low'] = l
-            r['close'] = c
+        if rt.hour == 8 and rt.minute == 0:
+            r['open'] = 101.5
+            r['high'] = 104.0
+            r['low'] = 99.5   # sweep_low vs AsiaLow=100
+            r['close'] = 103.0  # bullMSS vs prev3 highs=101
 
     out = tmp_path / 'outputs'
     out.mkdir()
-    _write_rows_csv(out / 'EURUSD_bars.csv', rows)
+    _write_rows_csv(_m5_path(out, 'EURUSD'), rows)
 
     s = AsiaSweepStrategy(symbols=['EURUSD'])
     _set_output_paths(s, out)
@@ -191,12 +199,12 @@ def test_long_setup_uses_071_fib_with_m5_stop_and_asia_tp(tmp_path):
 
 def test_short_setup_uses_071_fib_with_m5_stop_and_asia_tp(tmp_path):
     start = datetime(2026, 2, 7, 0, 0)
-    end = datetime(2026, 2, 7, 8, 4)
+    end = datetime(2026, 2, 7, 8, 0)
     rows = []
     t = start
     while t <= end:
         rows.append({'time': t.isoformat(), 'open': 95.0, 'high': 99.0, 'low': 90.0, 'close': 95.0})
-        t = t + timedelta(minutes=1)
+        t = t + timedelta(minutes=5)
 
     # Asia baseline and explicit boundaries.
     for r in rows:
@@ -218,26 +226,18 @@ def test_short_setup_uses_071_fib_with_m5_stop_and_asia_tp(tmp_path):
             r['low'] = 96.0
             r['close'] = 97.0
 
-    # Current M5 (08:00-08:04): sweep above AsiaHigh and close below prior3 lows.
-    curr = {
-        0: (97.0, 100.0, 95.0, 96.5),
-        1: (96.5, 101.0, 95.0, 95.8),
-        2: (95.8, 101.0, 94.5, 95.4),
-        3: (95.4, 101.0, 94.2, 95.1),
-        4: (95.1, 101.0, 94.0, 95.0),
-    }
+    # Current M5 (08:00): sweep above AsiaHigh and close below prior3 lows.
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and rt.minute in curr:
-            o, h, l, c = curr[rt.minute]
-            r['open'] = o
-            r['high'] = h
-            r['low'] = l
-            r['close'] = c
+        if rt.hour == 8 and rt.minute == 0:
+            r['open'] = 97.0
+            r['high'] = 101.0  # sweep_high vs AsiaHigh=100
+            r['low'] = 94.0
+            r['close'] = 95.0  # bearMSS vs prev3 lows=96
 
     out = tmp_path / 'outputs'
     out.mkdir()
-    _write_rows_csv(out / 'GBPUSD_bars.csv', rows)
+    _write_rows_csv(_m5_path(out, 'GBPUSD'), rows)
 
     s = AsiaSweepStrategy(symbols=['GBPUSD'])
     _set_output_paths(s, out)
@@ -260,7 +260,7 @@ def test_short_setup_uses_071_fib_with_m5_stop_and_asia_tp(tmp_path):
 def test_traded_today_resets_on_new_local_day(tmp_path):
     out = tmp_path / 'outputs'
     out.mkdir()
-    _make_minute_bars_csv(out / 'EURUSD_bars.csv', datetime(2026, 2, 7, 0, 0), datetime(2026, 2, 7, 8, 4))
+    _make_m5_bars_csv(_m5_path(out, 'EURUSD'), datetime(2026, 2, 7, 0, 0), datetime(2026, 2, 7, 8, 0))
 
     s = AsiaSweepStrategy(symbols=['EURUSD'])
     _set_output_paths(s, out)
@@ -280,10 +280,11 @@ def test_session_timezone_dst_changes_london_window(tmp_path):
 
     def _rows_until(ts_utc: datetime):
         rows = []
-        t = ts_utc - timedelta(minutes=45)
+        # Ensure we have >= 20 M5 bars so strategy doesn't fail-closed.
+        t = ts_utc - timedelta(minutes=5 * 25)
         while t <= ts_utc:
             rows.append({'time': t.isoformat(), 'open': 100.0, 'high': 100.0, 'low': 100.0, 'close': 100.0})
-            t = t + timedelta(minutes=1)
+            t = t + timedelta(minutes=5)
         return rows
 
     s = AsiaSweepStrategy(symbols=['EURUSD'])
@@ -297,14 +298,14 @@ def test_session_timezone_dst_changes_london_window(tmp_path):
     )
 
     # Winter: 07:30 UTC = 07:30 London (outside 08:00-14:00)
-    _write_rows_csv(out / 'EURUSD_bars.csv', _rows_until(datetime(2026, 1, 15, 7, 30)))
+    _write_rows_csv(_m5_path(out, 'EURUSD'), _rows_until(datetime(2026, 1, 15, 7, 30)))
     winter = s.generate_for_symbol('EURUSD')
     assert winter is not None
     assert winter.get('in_london') is False
     assert winter.get('session_tz') == 'Europe/London'
 
     # Summer: 07:30 UTC = 08:30 London (inside 08:00-14:00)
-    _write_rows_csv(out / 'EURUSD_bars.csv', _rows_until(datetime(2026, 7, 15, 7, 30)))
+    _write_rows_csv(_m5_path(out, 'EURUSD'), _rows_until(datetime(2026, 7, 15, 7, 30)))
     summer = s.generate_for_symbol('EURUSD')
     assert summer is not None
     assert summer.get('in_london') is True
@@ -314,12 +315,12 @@ def test_session_timezone_dst_changes_london_window(tmp_path):
 def test_long_qualifies_when_mss_after_sweep_within_window(tmp_path):
     # Build a sweep_low at 08:00 and delay bullMSS until 08:10 (still within 60m window).
     start = datetime(2026, 2, 7, 0, 0)
-    end = datetime(2026, 2, 7, 8, 14)
+    end = datetime(2026, 2, 7, 8, 10)
     rows = []
     t = start
     while t <= end:
         rows.append({'time': t.isoformat(), 'open': 100.0, 'high': 100.0, 'low': 100.0, 'close': 100.0})
-        t = t + timedelta(minutes=1)
+        t = t + timedelta(minutes=5)
 
     # Set AsiaHigh explicitly.
     for r in rows:
@@ -334,33 +335,33 @@ def test_long_qualifies_when_mss_after_sweep_within_window(tmp_path):
             r['low'] = 100.0
             r['close'] = 100.2
 
-    # 08:00-08:04: sweep below AsiaLow (100), but no bullMSS yet (close <= prev3 max high 101)
+    # 08:00: sweep below AsiaLow (100), but no bullMSS yet (close <= prev3 max high 101)
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and 0 <= rt.minute <= 4:
+        if rt.hour == 8 and rt.minute == 0:
             r['high'] = 101.0
             r['low'] = 99.0  # sweep_low
             r['close'] = 100.5
 
-    # 08:05-08:09: still no bullMSS
+    # 08:05: still no bullMSS
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and 5 <= rt.minute <= 9:
+        if rt.hour == 8 and rt.minute == 5:
             r['high'] = 101.2
             r['low'] = 100.0
             r['close'] = 100.7
 
-    # 08:10-08:14: bullMSS confirmation candle (close breaks above prior highs)
+    # 08:10: bullMSS confirmation candle (close breaks above prior highs)
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and 10 <= rt.minute <= 14:
+        if rt.hour == 8 and rt.minute == 10:
             r['high'] = 104.0
             r['low'] = 100.0
             r['close'] = 102.0  # bullMSS should trigger here
 
     out = tmp_path / 'outputs'
     out.mkdir()
-    _write_rows_csv(out / 'EURUSD_bars.csv', rows)
+    _write_rows_csv(_m5_path(out, 'EURUSD'), rows)
 
     s = AsiaSweepStrategy(symbols=['EURUSD'])
     _set_output_paths(s, out)
@@ -386,12 +387,12 @@ def test_long_qualifies_when_mss_after_sweep_within_window(tmp_path):
 def test_short_qualifies_when_mss_after_sweep_within_window(tmp_path):
     # Build a sweep_high at 08:00 and delay bearMSS until 08:10 (still within 60m window).
     start = datetime(2026, 2, 7, 0, 0)
-    end = datetime(2026, 2, 7, 8, 14)
+    end = datetime(2026, 2, 7, 8, 10)
     rows = []
     t = start
     while t <= end:
         rows.append({'time': t.isoformat(), 'open': 95.0, 'high': 99.0, 'low': 90.0, 'close': 95.0})
-        t = t + timedelta(minutes=1)
+        t = t + timedelta(minutes=5)
 
     # Set AsiaLow explicitly for TP.
     for r in rows:
@@ -406,33 +407,33 @@ def test_short_qualifies_when_mss_after_sweep_within_window(tmp_path):
             r['low'] = 96.0
             r['close'] = 97.0
 
-    # 08:00-08:04: sweep above AsiaHigh (99), but no bearMSS yet (close >= prev3 min low 96)
+    # 08:00: sweep above AsiaHigh (99), but no bearMSS yet (close >= prev3 min low 96)
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and 0 <= rt.minute <= 4:
+        if rt.hour == 8 and rt.minute == 0:
             r['high'] = 101.0  # sweep_high
             r['low'] = 96.0
             r['close'] = 96.8
 
-    # 08:05-08:09: still no bearMSS
+    # 08:05: still no bearMSS
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and 5 <= rt.minute <= 9:
+        if rt.hour == 8 and rt.minute == 5:
             r['high'] = 100.8
             r['low'] = 96.2
             r['close'] = 96.7
 
-    # 08:10-08:14: bearMSS confirmation candle (close breaks below prior lows)
+    # 08:10: bearMSS confirmation candle (close breaks below prior lows)
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and 10 <= rt.minute <= 14:
+        if rt.hour == 8 and rt.minute == 10:
             r['high'] = 101.0
             r['low'] = 94.0
             r['close'] = 95.0  # bearMSS should trigger here vs prior min low ~96
 
     out = tmp_path / 'outputs'
     out.mkdir()
-    _write_rows_csv(out / 'GBPUSD_bars.csv', rows)
+    _write_rows_csv(_m5_path(out, 'GBPUSD'), rows)
 
     s = AsiaSweepStrategy(symbols=['GBPUSD'])
     _set_output_paths(s, out)
@@ -462,12 +463,12 @@ def test_pending_when_sweep_seen_but_mss_not_yet(tmp_path):
     t = start
     while t <= end:
         rows.append({'time': t.isoformat(), 'open': 95.0, 'high': 99.0, 'low': 90.0, 'close': 95.0})
-        t = t + timedelta(minutes=1)
+        t = t + timedelta(minutes=5)
 
     # Ensure AsiaHigh is 99 (default highs), and create a sweep_high at 08:00 candle.
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and 0 <= rt.minute <= 4:
+        if rt.hour == 8 and rt.minute == 0:
             r['high'] = 101.0  # sweep_high
             r['low'] = 96.0
             r['close'] = 96.5   # avoid bearMSS
@@ -488,7 +489,7 @@ def test_pending_when_sweep_seen_but_mss_not_yet(tmp_path):
 
     out = tmp_path / 'outputs'
     out.mkdir()
-    _write_rows_csv(out / 'EURUSD_bars.csv', rows)
+    _write_rows_csv(_m5_path(out, 'EURUSD'), rows)
 
     s = AsiaSweepStrategy(symbols=['EURUSD'])
     _set_output_paths(s, out)
@@ -512,11 +513,11 @@ def test_sweep_expires_when_no_mss_in_window(tmp_path):
     t = start
     while t <= end:
         rows.append({'time': t.isoformat(), 'open': 95.0, 'high': 99.0, 'low': 90.0, 'close': 95.0})
-        t = t + timedelta(minutes=1)
+        t = t + timedelta(minutes=5)
 
     for r in rows:
         rt = datetime.fromisoformat(r['time'])
-        if rt.hour == 8 and 0 <= rt.minute <= 4:
+        if rt.hour == 8 and rt.minute == 0:
             r['high'] = 101.0  # sweep_high at 08:00
             r['low'] = 96.0
             r['close'] = 96.5  # avoid bearMSS
@@ -532,7 +533,7 @@ def test_sweep_expires_when_no_mss_in_window(tmp_path):
 
     out = tmp_path / 'outputs'
     out.mkdir()
-    _write_rows_csv(out / 'EURUSD_bars.csv', rows)
+    _write_rows_csv(_m5_path(out, 'EURUSD'), rows)
 
     s = AsiaSweepStrategy(symbols=['EURUSD'])
     _set_output_paths(s, out)
@@ -559,18 +560,18 @@ def test_asia_range_uses_session_tz_for_day_rollover_summer(tmp_path):
     end = datetime(2026, 7, 15, 0, 10)
     while t <= end:
         rows.append({'time': t.isoformat(), 'open': 100.0, 'high': 100.0, 'low': 100.0, 'close': 100.0})
-        t = t + timedelta(minutes=1)
+        t = t + timedelta(minutes=5)
 
     # Put a distinctive high inside what should be Asia session in session TZ.
     rows[5]['high'] = 123.0
 
-    _write_rows_csv(out / 'EURUSD_bars.csv', rows)
+    _write_rows_csv(_m5_path(out, 'EURUSD'), rows)
 
     s = AsiaSweepStrategy(symbols=['EURUSD'])
     _set_output_paths(s, out)
     s.configure(dry_run=True, order_size=0.01, time_zone='UTC', session_time_zone='Europe/London', log_orders=str(out / 'asia_mss_orders.csv'))
 
-    df = s.load_bars('EURUSD')
+    df = s.load_bars('EURUSD', timeframe='m5')
     asia_high, asia_low, eqh, eql = s._compute_asia_range(df)
 
     assert asia_high == pytest.approx(123.0)

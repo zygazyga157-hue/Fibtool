@@ -378,12 +378,25 @@ class AsiaSweepStrategy:
             except Exception:
                 pass
 
-    def _bars_path(self, symbol: str) -> str:
-        return os.path.join(self.OUTPUT_DIR, f"{symbol.lower()}_bars.csv")
+    def _symbol_slug(self, symbol: str) -> str:
+        """Match mt5_bg_collector's filesystem-safe symbol slugging."""
+        try:
+            return ''.join(ch if ch.isalnum() else '_' for ch in str(symbol)).lower().strip('_')
+        except Exception:
+            return str(symbol).replace('/', '_').replace(' ', '_').lower()
 
-    def load_bars(self, symbol: str) -> Optional[pd.DataFrame]:
+    def _bars_path(self, symbol: str, *, timeframe: str = "m15") -> str:
+        slug = self._symbol_slug(symbol)
+        tf = str(timeframe or "m15").strip().lower()
+        # Plan: true M5 is stored separately as outputs/<slug>_m5.csv
+        if tf in ("m5", "5"):
+            return os.path.join(self.OUTPUT_DIR, f"{slug}_m5.csv")
+        # Default / legacy: M15 bars live at outputs/<slug>_bars.csv
+        return os.path.join(self.OUTPUT_DIR, f"{slug}_bars.csv")
+
+    def load_bars(self, symbol: str, *, timeframe: str = "m15") -> Optional[pd.DataFrame]:
         self._require_pandas()
-        path = self._bars_path(symbol)
+        path = self._bars_path(symbol, timeframe=timeframe)
         if not os.path.exists(path):
             return None
         try:
@@ -392,6 +405,8 @@ class AsiaSweepStrategy:
                 # Keep canonical UTC index; convert to session/local time only for comparisons.
                 df.index = self._to_utc_index(df.index)
                 df.sort_index(inplace=True)
+                # Ensure unique timestamps (collector merges can create duplicates during upserts).
+                df = df[~df.index.duplicated(keep='last')]
             except Exception:
                 pass
             return df
@@ -403,6 +418,7 @@ class AsiaSweepStrategy:
                     try:
                         df.index = self._to_utc_index(df.index)
                         df.sort_index(inplace=True)
+                        df = df[~df.index.duplicated(keep='last')]
                     except Exception:
                         pass
                 return df
@@ -783,11 +799,111 @@ class AsiaSweepStrategy:
         out['bearMSS'] = bear
         return out
 
+    def _atr14_at(self, m5_utc: pd.DataFrame, t0_utc: 'pd.Timestamp') -> Optional[float]:
+        """Compute ATR(14) at (or before) t0_utc using only data <= t0_utc.
+
+        Used for ML feature normalization and mirrors the ML dataset builder.
+        """
+        self._require_pandas()
+        try:
+            if m5_utc is None or m5_utc.empty:
+                return None
+            df = m5_utc[['high', 'low', 'close']].copy()
+            df = df.loc[:t0_utc]
+            if len(df) < 15:
+                return None
+            high = pd.to_numeric(df['high'], errors='coerce')
+            low = pd.to_numeric(df['low'], errors='coerce')
+            close = pd.to_numeric(df['close'], errors='coerce')
+            prev_close = close.shift(1)
+            tr1 = (high - low).abs()
+            tr2 = (high - prev_close).abs()
+            tr3 = (low - prev_close).abs()
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            atr = tr.rolling(window=14, min_periods=14).mean()
+            v = float(atr.iloc[-1])
+            if v and v == v and v > 0:
+                return v
+        except Exception:
+            return None
+        return None
+
     def generate_for_symbol(self, symbol: str) -> Optional[dict]:
         self._require_pandas()
-        df = self.load_bars(symbol)
-        if df is None or len(df) < 20:
-            return None
+        # Plan: use TRUE M5 bars persisted by the collector (outputs/<slug>_m5.csv).
+        df_m5 = self.load_bars(symbol, timeframe="m5")
+        if df_m5 is None or len(df_m5) < 20:
+            # Fail-closed but still emit a deterministic trace so live operators can see why.
+            df_any = self.load_bars(symbol, timeframe="m15")
+            if df_any is None or df_any.empty:
+                return None
+            last_bar = df_any.iloc[-1]
+            try:
+                idx_utc = self._to_utc_timestamp(df_any.index[-1])
+            except Exception:
+                idx_utc = pd.Timestamp.now(tz='UTC')
+            try:
+                idx_session = self._to_target_timezone(
+                    idx_utc,
+                    getattr(self, 'session_time_zone', 'UTC'),
+                    getattr(self, 'session_time_offset_hours', None),
+                )
+            except Exception:
+                idx_session = idx_utc
+            try:
+                idx_local = self._to_target_timezone(
+                    idx_utc,
+                    getattr(self, 'time_zone', 'UTC'),
+                    getattr(self, 'time_offset_hours', None),
+                )
+            except Exception:
+                idx_local = idx_utc
+
+            signal = {
+                "timestamp": idx_utc.isoformat(),
+                "timestamp_session": idx_session.isoformat(),
+                "timestamp_local": idx_local.isoformat(),
+                "session_tz": getattr(self, "session_time_zone", "UTC"),
+                "local_tz": getattr(self, "time_zone", "UTC"),
+                "symbol": symbol,
+                "current_price": float(last_bar["close"]) if "close" in last_bar.index else None,
+                "asia_high": None,
+                "asia_low": None,
+                "eqh_liquidity_pool": False,
+                "eql_liquidity_pool": False,
+                "eqh_touch_count": 0,
+                "eql_touch_count": 0,
+                "in_london": False,
+                "in_asia": False,
+                "in_london_local": False,
+                "in_asia_local": False,
+                "sweep_high": False,
+                "sweep_low": False,
+                "m5": {},
+                "mss": {"bullMSS": False, "bearMSS": False, "current_m5": {}, "prev3": {}},
+                "fib_ratio": 0.71,
+                "fib_long": None,
+                "fib_short": None,
+                "note": "Missing M5 bars",
+                "skipped_tradedToday": bool(self.state.get("tradedToday", {}).get(symbol, False)),
+                "gates": {
+                    "in_london": False,
+                    "skipped_tradedToday": bool(self.state.get("tradedToday", {}).get(symbol, False)),
+                    "confirm_window_bars": int(self._cfg("ASIA_SWEEP_CONFIRM_WINDOW_BARS", 12)),
+                    "mss_lookback": int(self._cfg("ASIA_SWEEP_MSS_LOOKBACK", 3)),
+                    "sweep_dir": None,
+                    "sweep_time": None,
+                    "mss_dir": None,
+                    "mss_time": None,
+                    "pending_confirmation": False,
+                },
+                "trade_setup": {"valid": False, "reason": "Missing M5 bars"},
+                "pretrade": {"passed": False, "reason": "Missing M5 bars", "lots": None, "rr": None},
+            }
+            self._emit_signal(signal)
+            return signal
+
+        df = df_m5
 
         asia_high, asia_low, eqh_count, eql_count = self._compute_asia_range(df)
 
@@ -866,7 +982,10 @@ class AsiaSweepStrategy:
         self._ensure_daily_state(idx_session)
 
         # Build M5 and MSS flags (snapshot + series for event gating)
-        m5 = self._resample_m5(df)
+        # True M5 bars are loaded directly; do not resample M15->M5 here.
+        m5 = df[['open', 'high', 'low', 'close']].copy()
+        m5.dropna(how='any', inplace=True)
+        m5.sort_index(inplace=True)
 
         # compute floored current M5 bar time using same offset rules as resampling
         try:
@@ -1342,6 +1461,142 @@ class AsiaSweepStrategy:
                         pretrade['reason'] = 'Pretrade blocked'
                 except Exception:
                     pretrade['reason'] = 'Pretrade blocked'
+
+            # Optional ML gate (plan): apply only after mechanical qualification + pretrade RR checks pass.
+            try:
+                ml_enabled = bool(self._cfg('ASIA_SWEEP_ML_ENABLED', False))
+            except Exception:
+                ml_enabled = False
+            if ml_enabled and pretrade.get('passed') and trade_setup.get('valid'):
+                ml = {"enabled": True, "model_version": "v1", "prob": None, "passed": False}
+                try:
+                    model_dir_cfg = str(self._cfg('ASIA_SWEEP_ML_MODEL_DIR', 'outputs/models/asia_sweep_mss'))
+                    min_prob = float(self._cfg('ASIA_SWEEP_ML_MIN_PROB', 0.55))
+
+                    # Hot-reload support: config can point either to an artifacts dir (contains model.pt)
+                    # or to a model root that contains current.json -> active_dir.
+                    from ml.asia_sweep_london_mss.model_registry import resolve_active_model_dir
+                    model_dir = str(resolve_active_model_dir(model_dir_cfg))
+
+                    # Determine t0 and sweep used for this trade direction
+                    try:
+                        confirm_time = pd.to_datetime(gates.get('mss_time')) if isinstance(gates, dict) else None
+                    except Exception:
+                        confirm_time = None
+                    if confirm_time is None:
+                        raise RuntimeError("Missing mss_time for ML features")
+                    t0_utc = self._to_utc_timestamp(confirm_time)
+
+                    atr14 = self._atr14_at(m5, t0_utc)
+                    if atr14 is None:
+                        raise RuntimeError("ATR14 unavailable for ML features")
+
+                    side = str(trade_setup.get('type') or '').strip()
+                    is_long = side.lower().startswith('long')
+                    sweep_time_used = sweep_low_time if is_long else sweep_high_time
+
+                    # Sweep depth uses the sweep candle low/high relative to asia levels.
+                    sweep_depth_atr = 0.0
+                    if sweep_time_used is not None and isinstance(m5_session, pd.DataFrame) and sweep_time_used in m5_session.index:
+                        srow = m5_session.loc[sweep_time_used]
+                        if is_long:
+                            sweep_depth_atr = (float(asia_low) - float(srow['low'])) / float(atr14)
+                        else:
+                            sweep_depth_atr = (float(srow['high']) - float(asia_high)) / float(atr14)
+
+                    # confirm candle close at t0 (for entry_dist feature)
+                    close_t0 = None
+                    try:
+                        if isinstance(m5_london, pd.DataFrame) and confirm_time in m5_london.index:
+                            close_t0 = float(m5_london.loc[confirm_time]['close'])
+                    except Exception:
+                        close_t0 = None
+                    if close_t0 is None:
+                        # fallback to current close (best-effort)
+                        close_t0 = float(last_bar['close'])
+
+                    entry = float(trade_setup['entry'])
+                    stop = float(trade_setup['stop_loss'])
+                    tp = float(trade_setup['take_profit']) if trade_setup.get('take_profit') is not None else None
+
+                    # minutes_from_london_open normalized
+                    try:
+                        london_start = self._parse_hhmm(self._cfg('ASIA_SWEEP_LONDON_START', '08:00'), '08:00')
+                        london_end = self._parse_hhmm(self._cfg('ASIA_SWEEP_LONDON_END', '14:00'), '14:00')
+                        ls = pd.Timestamp(f"{confirm_time.date().isoformat()} {london_start}", tz=confirm_time.tz).time()
+                        le = pd.Timestamp(f"{confirm_time.date().isoformat()} {london_end}", tz=confirm_time.tz).time()
+                        mins_from_open = (confirm_time.time().hour * 60 + confirm_time.time().minute) - (ls.hour * 60 + ls.minute)
+                        total_mins = max(1, (le.hour * 60 + le.minute) - (ls.hour * 60 + ls.minute))
+                        minutes_from_london_open = max(0.0, min(1.0, float(mins_from_open) / float(total_mins)))
+                    except Exception:
+                        minutes_from_london_open = 0.0
+
+                    # bars_from_sweep_to_mss (and norm)
+                    bars_from_sweep = 0.0
+                    bars_from_sweep_norm = 0.0
+                    if sweep_time_used is not None:
+                        try:
+                            dt_min = (confirm_time - sweep_time_used).total_seconds() / 60.0
+                            bars_from_sweep = float(int(round(dt_min / 5.0)))
+                            bars_from_sweep_norm = float(bars_from_sweep) / float(max(1, int(confirm_window_bars)))
+                        except Exception:
+                            pass
+
+                    # confirm_range_atr: infer from (entry-stop)/fib_ratio for this strategy
+                    fib_ratio = float(signal.get('fib_ratio') or 0.71)
+                    confirm_range = abs(entry - stop) / fib_ratio if fib_ratio else None
+                    confirm_range_atr = float(confirm_range) / float(atr14) if confirm_range and atr14 else 0.0
+
+                    entry_dist_atr = abs(entry - float(close_t0)) / float(atr14) if atr14 else 0.0
+                    rr = pretrade.get('rr')
+                    try:
+                        rr = float(rr) if rr is not None else (abs(tp - entry) / abs(entry - stop) if tp is not None and entry != stop else None)
+                    except Exception:
+                        rr = None
+
+                    features = {
+                        "asia_range": float(asia_high - asia_low) if asia_high is not None and asia_low is not None else 0.0,
+                        "atr14": float(atr14),
+                        "asia_range_atr": float((asia_high - asia_low) / atr14) if asia_high is not None and asia_low is not None and atr14 else 0.0,
+                        "eqh_touch_count": int(eqh_count),
+                        "eql_touch_count": int(eql_count),
+                        "sweep_dir": 1 if is_long else -1,
+                        "sweep_depth_atr": float(sweep_depth_atr),
+                        "minutes_from_london_open": float(minutes_from_london_open),
+                        "bars_from_sweep_to_mss": float(bars_from_sweep),
+                        "bars_from_sweep_to_mss_norm": float(bars_from_sweep_norm),
+                        "confirm_range_atr": float(confirm_range_atr),
+                        "entry_dist_atr": float(entry_dist_atr),
+                        "rr": float(rr) if rr is not None else 0.0,
+                        # --- v2 engineered features ---
+                        "day_of_week": int(confirm_time.weekday()) if confirm_time is not None else 0,
+                        "sweep_depth_x_asia_atr": float(sweep_depth_atr) * float((asia_high - asia_low) / atr14) if asia_high is not None and asia_low is not None and atr14 else 0.0,
+                        "confirm_body_ratio": abs(float(close_t0) - float(last_bar.get('open', close_t0))) / float(confirm_range) if confirm_range and confirm_range > 0 else 0.0,
+                        "rr_capped": min(float(rr), 20.0) if rr is not None else 0.0,
+                        "sweep_velocity_atr": float(sweep_depth_atr) / float(bars_from_sweep) if bars_from_sweep and float(bars_from_sweep) > 0 else 0.0,
+                        "multi_touch": max(int(eqh_count), int(eql_count)),
+                        "entry_stop_atr": abs(float(entry) - float(stop)) / float(atr14) if atr14 else 0.0,
+                    }
+
+                    from ml.asia_sweep_london_mss.inference import score_probability
+
+                    prob = score_probability(symbol=symbol, features=features, model_dir=model_dir)
+                    ml["prob"] = float(prob)
+                    ml["passed"] = bool(prob >= min_prob)
+                    ml["min_prob"] = float(min_prob)
+                    ml["model_root"] = str(model_dir_cfg)
+                    ml["artifact_dir"] = str(model_dir)
+                    signal["ml"] = ml
+
+                    if not ml["passed"]:
+                        pretrade["passed"] = False
+                        pretrade["reason"] = f"ML blocked (p={float(prob):.3f} < {float(min_prob):.2f})"
+                except Exception as e:
+                    ml["error"] = str(e)
+                    signal["ml"] = ml
+                    # fail-closed when ML is enabled but unusable
+                    pretrade["passed"] = False
+                    pretrade["reason"] = "ML model unavailable"
 
             # Emit, log order (dry-run or simulated) and mark tradedToday when submitting
             self._emit_signal(signal)
