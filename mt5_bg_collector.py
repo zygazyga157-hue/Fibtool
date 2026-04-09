@@ -56,14 +56,14 @@ ANALYSIS_CSV = os.path.join(OUTPUT_DIR, 'xauusd_analysis.csv')
 CONFLUENCE_INDEX = os.path.join(OUTPUT_DIR, 'confluence_index.json')
 CONFLUENCE_TTL_MINUTES = 60
 
-# Default timeframe is M15 (user requested only M15)
-TIMEFRAME = mt5.TIMEFRAME_H1 if MT5_AVAILABLE else None
+# Default timeframe is H4 (user requested only H4)
+TIMEFRAME = mt5.TIMEFRAME_H4 if MT5_AVAILABLE else None
 
 # Compute number of bars to fetch from MT5 based on desired history length.
 # Previously this was a fixed 500 bars. For better accuracy use ~6 months
 # of history by default (approximate month = 30 days). We compute an
 # estimate depending on the timeframe (M1, M5, M15, M30, H1, H4, D1, W1, MN1).
-DEFAULT_HISTORY_MONTHS = 18  
+DEFAULT_HISTORY_MONTHS = 12
 MAX_BATCH_BARS = 100_000  # safety cap to avoid extremely large requests
 
 def _estimate_bars_for_timeframe(tf, months: int = DEFAULT_HISTORY_MONTHS) -> int:
@@ -823,89 +823,27 @@ def run_once_fetch_and_analyze_for_symbol(symbol: str):
     except Exception:
         pass
 
-    # Optional: run harmonic analysis integration and persist signals
+    # Optional: run harmonic analysis, Telegram signal, and autotrade
     try:
-        try:
-            if getattr(_cfg, 'HARMONIC_SIGNALS_ENABLED', False) and analyze_symbol_live is not None:
-                # harmonics may be provided per-symbol in config.HARMONIC_HARMONICS
-                harms = None
-                # harmonics are loaded internally from docs/data/market_harmonics.json
-                # env override > config override > harmonic_trader UTC windows
-                session = os.getenv('HARMONIC_SESSION', getattr(_cfg, 'HARMONIC_SESSION', 'auto'))
-                hres = analyze_symbol_live(symbol, timeframe='H1', count=BATCH_BARS, harmonics=None, session=session)
-                # persist as newline-delimited JSON for easy inspection
-                try:
-                    os.makedirs(OUTPUT_DIR, exist_ok=True)
-                    outp = os.path.join(OUTPUT_DIR, 'harmonic_signals.jsonl')
-                    with open(outp, 'a', encoding='utf-8') as hf:
-                        hf.write(json.dumps(hres, default=str) + "\n")
-                except Exception:
-                    pass
-                    # If TEST_MODE is enabled, write a conservative simulated trade proposal
-                    try:
-                        if getattr(_cfg, 'TEST_MODE', False):
-                            sim = {}
-                            try:
-                                meta = hres.get('context', {}).get('meta', {}) if isinstance(hres, dict) else {}
-                                cur = meta.get('close') or analysis.get('current_price')
-                                atr = meta.get('atr') or 0.0
-                                sig = hres.get('signal')
-                                if cur is not None and sig in ('BUY', 'SELL'):
-                                    entry = float(cur)
-                                    atr_f = float(atr) if atr else max(1.0, entry * 0.002)
-                                    # conservative stop: 1.5 * ATR away
-                                    if sig == 'BUY':
-                                        stop = round(entry - 1.5 * atr_f, 6)
-                                        tp = round(entry + (getattr(_cfg, 'TEST_MODE_CONSERVATIVE_RR', 3.0) * (entry - stop)), 6)
-                                    else:
-                                        stop = round(entry + 1.5 * atr_f, 6)
-                                        tp = round(entry - (getattr(_cfg, 'TEST_MODE_CONSERVATIVE_RR', 3.0) * (stop - entry)), 6)
-                                    rr = None
-                                    try:
-                                        rr = abs((tp - entry) / (entry - stop)) if (entry - stop) != 0 else None
-                                    except Exception:
-                                        rr = None
-                                    sim = {
-                                        'symbol': symbol,
-                                        'simulated': True,
-                                        'type': sig,
-                                        'entry': entry,
-                                        'stop_loss': stop,
-                                        'take_profit': tp,
-                                        'rr_ratio': rr,
-                                        'timestamp': datetime.now(timezone.utc).isoformat(),
-                                        'reason': 'TEST_MODE conservative simulation from harmonic signal',
-                                        'context': hres,
-                                    }
-                                    try:
-                                        os.makedirs(OUTPUT_DIR, exist_ok=True)
-                                        tpath = os.path.join(OUTPUT_DIR, 'harmonic_test_trades.jsonl')
-                                        with open(tpath, 'a', encoding='utf-8') as tf:
-                                            tf.write(json.dumps(sim, default=str) + "\n")
-                                    except Exception:
-                                        pass
-                                    print(f"TEST_MODE: wrote simulated trade for {symbol}: {sim.get('type')} entry={sim.get('entry')} stop={sim.get('stop_loss')} tp={sim.get('take_profit')}")
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                # optional Telegram notify
-                try:
-                    if getattr(_cfg, 'HARMONIC_SIGNALS_TELEGRAM', False) and _cfg.TELEGRAM_BOT_TOKEN and _cfg.TELEGRAM_GROUP_ID:
-                        sig = hres.get('signal')
-                        if sig:
-                            text = f"Harmonic signal for {symbol}: {sig} — ctx: {hres.get('context', {}).get('meta', {})}"
-                            # simple send (best-effort)
-                            try:
-                                url = f"https://api.telegram.org/bot{_cfg.TELEGRAM_BOT_TOKEN}/sendMessage"
-                                payload = {'chat_id': _cfg.TELEGRAM_GROUP_ID, 'text': text}
-                                requests.post(url, json=payload, timeout=10)
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        if getattr(_cfg, 'HARMONIC_SIGNALS_ENABLED', False) and analyze_symbol_live is not None:
+            session = os.getenv('HARMONIC_SESSION', getattr(_cfg, 'HARMONIC_SESSION', 'auto'))
+            hres = analyze_symbol_live(symbol, timeframe='H1', count=BATCH_BARS, harmonics=None, session=session)
+
+            # Rich Telegram signal (HTML formatter + JSONL persist)
+            try:
+                from harmonic_signals import run_harmonic_signal_for_symbol
+                run_harmonic_signal_for_symbol(symbol, hres, _cfg, OUTPUT_DIR)
+            except Exception as e:
+                print(f"Harmonic signal error for {symbol}: {e}")
+
+            # Autotrade evaluation + execution
+            try:
+                if getattr(_cfg, 'HARMONIC_AUTOTRADE_ENABLED', False):
+                    from harmonic_autotrade import run_harmonic_autotrade_for_symbol
+                    at_res = run_harmonic_autotrade_for_symbol(symbol, hres, mt5, _cfg, OUTPUT_DIR)
+                    print(f"Harmonic autotrade result for {symbol}: {at_res.get('status')}")
+            except Exception as e:
+                print(f"Harmonic autotrade error for {symbol}: {e}")
     except Exception:
         pass
 

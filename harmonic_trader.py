@@ -667,6 +667,119 @@ def compute_harmonic_levels(symbol: str, ref_price: float, base_units: List[floa
     return levels
 
 
+def compute_multiples_tp_sl(
+    symbol: str,
+    side: str,
+    entry: float,
+    atr: float,
+    point: float,
+    base_harmonics: List[float],
+    common_multiples: List[float],
+    k_atr: float = 0.25,
+) -> Dict[str, Any]:
+    """Compute SL + multi-level TP ladder from harmonic multiples.
+
+    Risk floor: risk = max(max(base_harmonics) * point, k_atr * ATR)
+    Scaling:    scale = ceil(risk / (min(common_multiples) * point))
+    TP ladder:  tp_i  = entry ± common_multiples[i] * scale * point
+
+    Returns dict with: entry, sl, risk, scale, tp_levels, rr_levels,
+    be_trigger_0618.
+    """
+    import math as _m
+    try:
+        side_u = str(side).upper()
+        entry_f = float(entry)
+        atr_f = float(atr) if atr else 0.0
+        point_f = float(point) if point else 1e-6
+
+        structural_risk = max(float(h) for h in base_harmonics) * point_f
+        atr_floor = k_atr * atr_f
+        risk = max(structural_risk, atr_floor)
+        if risk <= 0:
+            risk = atr_f * 0.25 or point_f
+
+        if side_u in ('BUY', 'LONG'):
+            sl = round(entry_f - risk, 8)
+        else:
+            sl = round(entry_f + risk, 8)
+
+        raw_step = min(float(m) for m in common_multiples) * point_f
+        if raw_step <= 0:
+            raw_step = point_f
+        scale = max(1, _m.ceil(risk / raw_step))
+
+        tp_levels = []
+        rr_levels = []
+        for mult in sorted(float(m) for m in common_multiples):
+            offset = mult * scale * point_f
+            if side_u in ('BUY', 'LONG'):
+                tp = round(entry_f + offset, 8)
+            else:
+                tp = round(entry_f - offset, 8)
+            tp_levels.append(tp)
+            rr = round(abs(tp - entry_f) / risk, 4) if risk > 0 else 0.0
+            rr_levels.append(rr)
+
+        be_offset = 0.618 * risk
+        if side_u in ('BUY', 'LONG'):
+            be_trigger = round(entry_f + be_offset, 8)
+        else:
+            be_trigger = round(entry_f - be_offset, 8)
+
+        return {
+            'symbol': symbol,
+            'side': side_u,
+            'entry': entry_f,
+            'sl': sl,
+            'risk': round(risk, 8),
+            'scale': scale,
+            'tp_levels': tp_levels,
+            'rr_levels': rr_levels,
+            'be_trigger_0618': be_trigger,
+            'base_harmonics': list(base_harmonics),
+            'common_multiples': list(common_multiples),
+            'k_atr': k_atr,
+            'point': point_f,
+        }
+    except Exception:
+        return {}
+
+
+def get_harmonic_trade_setup(
+    symbol: str,
+    side: str,
+    entry: float,
+    atr: float,
+    point: float,
+    k_atr: float = 0.25,
+) -> Dict[str, Any]:
+    """Load harmonics for *symbol* from market_harmonics.json and compute TP/SL.
+
+    Returns the output of compute_multiples_tp_sl or {} if no harmonics found.
+    """
+    mh = load_market_harmonics()
+    # try exact key, then uppercase strip
+    key = symbol.replace('/', '').upper()
+    entry_data = mh.get(key) or mh.get(symbol) or mh.get(symbol.upper())
+    # fallback: try common MT5 aliases (e.g. US500 -> US SP 500)
+    if not entry_data:
+        _aliases = {
+            'US500': 'US SP 500', 'USTEC': 'US Tech 100', 'USTEC100': 'US Tech 100',
+            'US30': 'Wall Street 30', 'NAS100': 'US Tech 100', 'SP500': 'US SP 500',
+        }
+        mapped = _aliases.get(key)
+        if mapped:
+            entry_data = mh.get(mapped)
+    if not entry_data:
+        return {}
+    base = entry_data.get('base_harmonics', [])
+    multiples = entry_data.get('common_multiples', [])
+    if not base or not multiples:
+        return {}
+    return compute_multiples_tp_sl(symbol, side, entry, atr, point, base, multiples, k_atr=k_atr)
+
+
 def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, harmonics: Optional[list] = None,
                         session: str = 'NEW_YORK') -> Dict[str, Any]:
     """Fetch recent bars for `symbol` and produce a signal analysis dict.

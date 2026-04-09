@@ -38,8 +38,14 @@ def test_generate_signal_gate():
             'weighted_score': 0.8,
             'confirmations': 2,
         },
-        'acceptance': True,
-        'rejection': False,
+        'meta': {
+            'regime': 'TRENDING',
+        },
+        'structure': {
+            'volume_confirmed': True,
+            'buy_acceptance': True,
+            'sell_rejection': False,
+        },
     }
     assert generate_signal(ctx) == 'BUY'
 

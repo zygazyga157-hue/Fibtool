@@ -357,8 +357,18 @@ class AsiaSweepStrategy:
             return None
 
     def _save_state(self):
-        with open(self.STATE_FILE, 'w') as f:
-            json.dump(self.state, f, indent=2, default=str)
+        tmp = self.STATE_FILE + '.tmp'
+        try:
+            with open(tmp, 'w') as f:
+                json.dump(self.state, f, indent=2, default=str)
+            os.replace(tmp, self.STATE_FILE)
+        except Exception:
+            # best-effort fallback
+            try:
+                with open(self.STATE_FILE, 'w') as f:
+                    json.dump(self.state, f, indent=2, default=str)
+            except Exception:
+                pass
 
     def _ensure_daily_state(self, current_local_ts):
         """Reset tradedToday when the session calendar day rolls over."""

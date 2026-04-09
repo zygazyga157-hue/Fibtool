@@ -93,7 +93,7 @@ CANDLE_AUTOTRADE_NY_END = "12:00"
 # When True the collector will run harmonic analysis and persist signals
 HARMONIC_SIGNALS_ENABLED = True
 # When True send harmonic signals to Telegram chat configured in TELEGRAM_GROUP_ID
-HARMONIC_SIGNALS_TELEGRAM = False
+HARMONIC_SIGNALS_TELEGRAM = True
 # Optional mapping of symbol -> comma-separated harmonic price levels (string) e.g. {'XAUUSD':'1800,1850'}
 # harmonics are loaded from docs/data/market_harmonics.json; no need to configure here
 #HARMONIC_HARMONICS = {}
@@ -122,10 +122,19 @@ HARMONIC_ZONE_ATR_MULT = 0.25
 HARMONIC_REJECTION_WICK_BODY_RATIO = 1.2
 HARMONIC_VOLUME_CONFIRM_MIN = "MODERATE"
 HARMONIC_BLOCK_UNKNOWN_REGIME = True
+# Harmonic TP/SL computation
+HARMONIC_K_ATR = 0.25                  # risk floor = k_atr * ATR
+HARMONIC_TP_LEVEL = 3                   # which TP from ladder to use for MT5 order (1=conservative)
+HARMONIC_RR_MIN = 1.0                   # minimum RR to fire signal/autotrade
+# Harmonic autotrade
+HARMONIC_AUTOTRADE_ENABLED = True
+HARMONIC_AUTOTRADE_DRY_RUN = False  # live orders — confirm MT5 connection before enabling
+HARMONIC_AUTOTRADE_COOLDOWN_SECONDS = 3600
+HARMONIC_AUTOTRADE_STATE_PATH = "outputs/harmonic_autotrade_state.json"
 # Test mode: when True, the collector will NOT place real orders but will
 # write conservative simulated trade proposals to `outputs/harmonic_test_trades.jsonl`.
 # Use this to validate end-to-end signal -> trade setup logic without risking live orders.
-TEST_MODE = False
+TEST_MODE = False  # production mode — simulated trades disabled
 TEST_MODE_CONSERVATIVE_RR = 3.0  # target RR ratio for simulated trades
 # Model B (breakout) predicted-entry configuration (non-invasive)
 # Keep this section lean: define shared defaults once, then only profile-specific overrides.
@@ -193,7 +202,7 @@ ASIA_SWEEP_LOG_ORDERS = os.environ.get('ASIA_SWEEP_LOG_ORDERS', 'outputs/asia_ms
 # Default risk percent (overrides CLI when provided)
 ASIA_SWEEP_RISK_PCT = float(os.environ.get('ASIA_SWEEP_RISK_PCT', '1.0'))
 # Default dry-run behaviour (True/False)
-ASIA_SWEEP_DRY_RUN = os.environ.get('ASIA_SWEEP_DRY_RUN', '1') in ('1', 'true', 'True', 'yes')
+ASIA_SWEEP_DRY_RUN = os.environ.get('ASIA_SWEEP_DRY_RUN', '0') in ('1', 'true', 'True', 'yes')
 # Time zone used for session boundaries
 ASIA_SWEEP_TIME_ZONE = os.environ.get('ASIA_SWEEP_TIME_ZONE', 'UTC')
 # Time zone used for Asia/London session window evaluation (DST-aware if IANA, e.g. Europe/London)
@@ -226,7 +235,7 @@ ASIA_SWEEP_M5_HISTORY_MONTHS = int(os.environ.get('ASIA_SWEEP_M5_HISTORY_MONTHS'
 ASIA_SWEEP_M5_FETCH_BARS_PER_CYCLE = int(os.environ.get('ASIA_SWEEP_M5_FETCH_BARS_PER_CYCLE', '2000'))
 
 # ML gate (optional, fail-closed when enabled)
-ASIA_SWEEP_ML_ENABLED = os.environ.get('ASIA_SWEEP_ML_ENABLED', '0') in ('1', 'true', 'True', 'yes')
+ASIA_SWEEP_ML_ENABLED = os.environ.get('ASIA_SWEEP_ML_ENABLED', '1') in ('1', 'true', 'True', 'yes')
 # Can point either to:
 # - a model artifacts dir that contains model.pt, OR
 # - a model root that contains current.json -> active_dir (hot-reload friendly)
