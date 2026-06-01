@@ -1,0 +1,481 @@
+====================================================================
+FIBTOOL V2 — PROFESSIONAL CLI DEPLOYMENT COMMANDS
+Institutional Geometry Intelligence Engine
+====================================================================
+
+PHILOSOPHY
+----------
+These commands are tuned for:
+- Maximum geometry precision
+- Higher-quality pivot detection
+- Cleaner swing structure
+- Institutional-grade anchor selection
+- Stable multi-timeframe deployment
+- Reduced chart noise
+- High-confidence retracement and projection mapping
+
+STANDARD PRECISION SETTINGS
+---------------------------
+These settings are recommended for professional deployments:
+
+--pivot-left 7
+--pivot-right 7
+    Stronger pivot confirmation
+    Filters weak swings and micro-noise
+
+--ttl-hours 96
+    Keeps valid geometry active longer
+
+--max-objects 20
+    Prevents MT5 chart overload
+
+H4 Timeframe
+    Best balance between:
+    - structure clarity
+    - institutional swing quality
+    - confluence precision
+    - projection reliability
+
+PRIMARY SYMBOL BASKET
+---------------------
+XAUUSD
+US30
+XAGUSD
+BTCUSD
+EURUSD
+GBPUSD
+USDJPY
+GBPJPY
+EURJPY
+USDCHF
+
+
+====================================================================
+1. FIBONACCI RETRACEMENT ENGINE
+====================================================================
+
+PURPOSE
+-------
+Detect institutional pullback geometry using high-quality pivots.
+
+BEST TIMEFRAME
+--------------
+H4
+
+RECOMMENDED FOR
+---------------
+- Retracement analysis
+- Institutional equilibrium zones
+- Continuation structure
+- Pullback precision
+
+DEPLOYMENT COMMAND
+------------------
+
+python plots_v2/fib_retracement_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD,GBPUSD,USDJPY,GBPJPY,EURJPY,USDCHF `
+    --timeframes H4 `
+    --fib-ratios "0,0.236,0.382,0.5,0.618,0.786,1,1.272,1.618,2.618" `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+
+====================================================================
+2. FIBONACCI PROJECTION / EXPANSION ENGINE
+====================================================================
+
+PURPOSE
+-------
+Project ABC expansion geometry into future targets.
+
+BEST TIMEFRAME
+--------------
+H4
+
+RECOMMENDED FOR
+---------------
+- Expansion forecasting
+- Trend continuation
+- Impulse wave projection
+- Institutional target mapping
+
+DEPLOYMENT COMMAND
+------------------
+
+python plots_v2/fib_projection_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD,GBPUSD,USDJPY,GBPJPY,EURJPY,USDCHF `
+    --timeframes D1 `
+    --d-levels "1.272,1.618,2.618,4.236" `
+    --pivot-left 9 `
+    --pivot-right 9 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+
+====================================================================
+3. GANN FAN ENGINE
+====================================================================
+
+PURPOSE
+-------
+Deploy directional geometric angle projections from major pivots.
+
+BEST TIMEFRAME
+--------------
+H4
+
+RECOMMENDED FOR
+---------------
+- Trend acceleration analysis
+- Angular market structure
+- Dynamic support/resistance
+- Directional geometry
+
+DEPLOYMENT COMMAND
+------------------
+
+python plots_v2/gann_fan_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD,GBPUSD,USDJPY,GBPJPY,EURJPY,USDCHF `
+    --timeframes H4 `
+    --unit-mode atr `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+
+====================================================================
+4. GANN GRID ENGINE
+====================================================================
+
+PURPOSE
+-------
+Deploy time-price geometric grid structures.
+
+BEST TIMEFRAME
+--------------
+H4
+
+RECOMMENDED FOR
+---------------
+- Price/time harmonics
+- Structured expansion analysis
+- Geometric cycle interaction
+- Market rhythm mapping
+
+DEPLOYMENT COMMAND
+------------------
+
+python plots_v2/gann_grid_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD,GBPUSD,USDJPY,GBPJPY,EURJPY,USDCHF `
+    --timeframes H4 `
+    --unit-mode atr `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+
+====================================================================
+5. FIBONACCI TIME ZONE ENGINE
+====================================================================
+
+PURPOSE
+-------
+Map probable reaction timing zones using Fibonacci intervals.
+
+BEST TIMEFRAME
+--------------
+H4
+
+RECOMMENDED FOR
+---------------
+- Timing projections
+- Reaction windows
+- Expansion timing
+- Cycle anticipation
+
+DEPLOYMENT COMMAND
+------------------
+
+python plots_v2/fib_time_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD,GBPUSD,USDJPY,GBPJPY,EURJPY,USDCHF `
+    --timeframes H4 `
+    --time-levels "1,2,3,5,8,13,21,34,55" `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+
+====================================================================
+6. SQUARE OF NINE ENGINE
+====================================================================
+
+PURPOSE
+-------
+Deploy rotational geometry and degree-based projection levels.
+
+BEST TIMEFRAME
+--------------
+H4
+
+RECOMMENDED FOR
+---------------
+- Rotational geometry
+- Harmonic price levels
+- Gann degree interaction
+- Reaction mapping
+
+DEPLOYMENT COMMAND
+------------------
+
+python plots_v2/square9_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD,GBPUSD,USDJPY,GBPJPY,EURJPY,USDCHF `
+    --timeframes H4 `
+    --max-levels 30 `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+
+====================================================================
+7. CONFLUENCE ENGINE
+====================================================================
+
+PURPOSE
+-------
+Detect high-probability geometric overlap zones.
+
+BEST TIMEFRAME
+--------------
+H4
+
+RECOMMENDED FOR
+---------------
+- Reaction probability analysis
+- Institutional confluence
+- High-confidence reversal zones
+- Geometry clustering
+
+DEPLOYMENT COMMAND
+------------------
+
+python plots_v2/confluence_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD,GBPUSD,USDJPY,GBPJPY,EURJPY,USDCHF `
+    --timeframes H4 `
+    --fib-ratios "0,0.236,0.382,0.5,0.618,0.786,1,1.272,1.618,2.618" `
+    --top-n 15 `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+
+====================================================================
+8. STRUCTURE OVERLAY ENGINE
+====================================================================
+
+PURPOSE
+-------
+Overlay institutional structure and liquidity events.
+
+BEST TIMEFRAME
+--------------
+H1 + H4
+
+RECOMMENDED FOR
+---------------
+- MSS detection
+- BOS visualization
+- Asia sweep overlays
+- Liquidity mapping
+
+DEPLOYMENT COMMAND
+------------------
+
+python plots_v2/structure_overlay_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD,GBPUSD,USDJPY,GBPJPY,EURJPY,USDCHF `
+    --timeframes H1,H4 `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+
+====================================================================
+9. HIGH-PRECISION CONTINUOUS DEPLOYMENT
+====================================================================
+
+PURPOSE
+-------
+Continuous institutional geometry refresh.
+
+BEST FOR
+--------
+- Live MT5 environments
+- Active geometry tracking
+- Continuous confluence updates
+
+DEPLOYMENT COMMAND
+------------------
+
+python plots_v2/confluence_plot.py `
+    --symbols XAUUSD,US30,BTCUSD,EURUSD `
+    --timeframes H4 `
+    --fib-ratios "0,0.236,0.382,0.5,0.618,0.786,1,1.272,1.618,2.618" `
+    --top-n 15 `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --interval 60
+
+
+====================================================================
+10. MAXIMUM GEOMETRY PRECISION SETTINGS
+====================================================================
+
+INSTITUTIONAL SWING MODE
+------------------------
+--pivot-left 9
+--pivot-right 9
+
+Best for:
+- BTCUSD
+- XAUUSD
+- US30
+
+Effect:
+- Extremely clean swing detection
+- Very high-confidence pivots
+- Reduced market noise
+
+Example:
+
+python plots_v2/fib_retracement_plot.py `
+    --symbols BTCUSD,XAUUSD,US30 `
+    --timeframes H4 `
+    --pivot-left 9 `
+    --pivot-right 9 `
+    --ttl-hours 120 `
+    --max-objects 15 `
+    --once
+
+
+====================================================================
+11. MULTI-TIMEFRAME DEPLOYMENT MODEL
+====================================================================
+
+H1
+--
+Execution geometry
+Intraday structure
+Liquidity sweeps
+
+H4
+--
+Primary institutional geometry
+Best precision balance
+
+D1
+--
+Macro structure
+Long-term expansion targets
+
+RECOMMENDED STACK
+-----------------
+
+H1  -> Structure Overlay
+H4  -> Retracements + Confluence + Projection
+D1  -> Macro Projection + Gann Grid
+
+
+====================================================================
+12. PROFESSIONAL MT5 ENVIRONMENT SETUP
+====================================================================
+
+PowerShell:
+
+$env:FIBTOOL_MT5_DATA_FOLDER="C:\Users\<YOU>\AppData\Roaming\MetaQuotes\Terminal\<terminal_id>"
+
+Linux/macOS:
+
+export FIBTOOL_MT5_DATA_FOLDER="/path/to/mt5"
+
+
+====================================================================
+13. FULL INSTITUTIONAL GEOMETRY STACK
+====================================================================
+
+python plots_v2/fib_retracement_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD `
+    --timeframes H4 `
+    --fib-ratios "0,0.236,0.382,0.5,0.618,0.786,1,1.272,1.618,2.618" `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+python plots_v2/fib_projection_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD `
+    --timeframes H4 `
+    --d-levels "1.272,1.618,2.618,4.236" `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+python plots_v2/gann_fan_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD `
+    --timeframes H4 `
+    --unit-mode atr `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+python plots_v2/confluence_plot.py `
+    --symbols XAUUSD,US30,XAGUSD,BTCUSD,EURUSD `
+    --timeframes H4 `
+    --fib-ratios "0,0.236,0.382,0.5,0.618,0.786,1,1.272,1.618,2.618" `
+    --top-n 15 `
+    --pivot-left 7 `
+    --pivot-right 7 `
+    --ttl-hours 96 `
+    --max-objects 20 `
+    --once
+
+
+====================================================================
+FINAL PRINCIPLE
+====================================================================
+
+Price does not obey lines.
+
+Price obeys geometry.
+
+Geometry obeys structure.
+
+Structure obeys liquidity.
+
+Precision comes from:
+- cleaner pivots
+- better timeframe selection
+- confluence overlap
+- institutional swing quality
+- disciplined geometry deployment

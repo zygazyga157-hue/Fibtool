@@ -344,6 +344,122 @@ def compute_elapsed_bar_anchor(df: pd.DataFrame, lookback: int = 20) -> dict:
         return {'anchor_idx': 0, 'anchor_price': 0.0, 'anchor_time': None, 'anchor_kind': 'fallback', 'bars_elapsed': 1}
 
 
+def _hit_tolerance(point: float, atr: Optional[float], offset: float, cfg=None) -> float:
+    """Small, bounded tolerance for harmonic-hit detection."""
+    try:
+        pt = float(point or 0.0)
+    except Exception:
+        pt = 0.0
+    try:
+        atr_f = float(atr or 0.0)
+    except Exception:
+        atr_f = 0.0
+    try:
+        off = abs(float(offset or 0.0))
+    except Exception:
+        off = 0.0
+
+    min_points = getattr(cfg, 'HARMONIC_HIT_TOL_MIN_POINTS', 2) if cfg else 2
+    atr_mult = getattr(cfg, 'HARMONIC_HIT_TOL_ATR_MULT', 0.05) if cfg else 0.05
+    off_frac = getattr(cfg, 'HARMONIC_HIT_TOL_OFFSET_FRAC', 0.25) if cfg else 0.25
+
+    try:
+        tol_a = pt * float(min_points)
+    except Exception:
+        tol_a = pt * 2.0
+    try:
+        tol_b = atr_f * float(atr_mult)
+    except Exception:
+        tol_b = 0.0
+    try:
+        tol_c = off * float(off_frac)
+    except Exception:
+        tol_c = 0.0
+
+    tol = max(tol_a, tol_b, tol_c, pt)
+    try:
+        return float(tol)
+    except Exception:
+        return pt or 0.0
+
+
+def compute_harmonic_levels_projected(
+    ref_price: float,
+    base_units: List[float],
+    atr: Optional[float],
+    point: float,
+    cfg=None,
+    multiples: List[int] = (1, 2, 3),
+) -> List[dict]:
+    """Project harmonic levels from a reference price (anchor or close)."""
+    levels: List[dict] = []
+    try:
+        ref = float(ref_price)
+        pt = float(point or 1e-6)
+        for u in base_units:
+            for m in multiples:
+                try:
+                    offset = float(u) * float(m) * pt
+                except Exception:
+                    continue
+                tol = _hit_tolerance(pt, atr, offset, cfg=cfg)
+                levels.append({'level': ref + offset, 'harmonic': f"{u}x{m}", 'tolerance': tol, 'offset': offset})
+                levels.append({'level': ref - offset, 'harmonic': f"-{u}x{m}", 'tolerance': tol, 'offset': -offset})
+    except Exception:
+        return []
+    return levels
+
+
+def detect_harmonic_hit(df: pd.DataFrame, levels: List[dict], lookback_bars: int = 20) -> (bool, dict):
+    """Detect harmonic hit via wick-touch intersection within a recent lookback window."""
+    if df is None or len(df) == 0 or not levels:
+        return False, {}
+    n = len(df)
+    try:
+        lb = int(lookback_bars)
+    except Exception:
+        lb = 20
+    if lb <= 0:
+        lb = 1
+    start = max(0, n - lb)
+
+    # Scan from most recent backwards to get the freshest hit.
+    for i in range(n - 1, start - 1, -1):
+        try:
+            bar_low = float(df['low'].iloc[i])
+            bar_high = float(df['high'].iloc[i])
+            bar_close = float(df['close'].iloc[i])
+        except Exception:
+            continue
+        bar_time = None
+        try:
+            if 'time' in df.columns:
+                t = df['time'].iloc[i]
+                bar_time = t.isoformat() if hasattr(t, 'isoformat') else str(t)
+        except Exception:
+            bar_time = None
+
+        for lvl in levels:
+            try:
+                level_p = float(lvl.get('level', 0.0))
+                tol = float(lvl.get('tolerance', 0.0))
+                lo = level_p - tol
+                hi = level_p + tol
+                if bar_low <= hi and bar_high >= lo:
+                    dist = abs(bar_close - level_p)
+                    return True, {
+                        'hit_level': level_p,
+                        'hit_harmonic': lvl.get('harmonic'),
+                        'hit_bar_time': bar_time,
+                        'hit_bar_index': int(i),
+                        'hit_distance': float(dist),
+                    }
+            except Exception:
+                continue
+
+    return False, {}
+
+
 def generate_signal(context: Dict[str, Any], cfg=None) -> Optional[str]:
     if cfg is None:
         try:
@@ -848,6 +964,8 @@ def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, ha
     # otherwise try to load base units from docs/data/market_harmonics.json and compute levels
     harmonic_hit = False
     harmonic_levels = []
+    hit_meta = {}
+    hit_method = None
     # determine instrument point size for tolerance calculations
     point_value = 0.01
     try:
@@ -862,15 +980,24 @@ def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, ha
     except Exception:
         point_value = 0.01
     try:
+        # Model controls how levels are projected (anchor vs close) but hit logic is wick-touch lookback.
+        hit_model = getattr(cfg_mod, 'HARMONIC_HIT_MODEL', 'ANCHOR') if cfg_mod else 'ANCHOR'
+        hit_model_u = str(hit_model).upper()
+        if hit_model_u not in ('ANCHOR', 'CLOSE'):
+            hit_model_u = 'ANCHOR'
+        ref_price = anchor_price if hit_model_u == 'ANCHOR' else close
+
         if harmonics and isinstance(harmonics, list) and len(harmonics) > 0:
             # treat harmonics as explicit price levels
+            hit_method = 'EXPLICIT'
             for lvl in harmonics:
                 try:
                     lvlf = float(lvl)
                 except Exception:
                     continue
-                tol = max(point_value * 0.1, (atr or (abs(close) * 0.001)) * 0.2)
-                harmonic_levels.append({'level': lvlf, 'harmonic': 'explicit', 'tolerance': tol})
+                offset = abs(lvlf - float(ref_price))
+                tol = _hit_tolerance(point_value, atr, offset, cfg=cfg_mod)
+                harmonic_levels.append({'level': lvlf, 'harmonic': 'explicit', 'tolerance': tol, 'offset': offset})
         else:
             # load from market harmonics reference
             mh = load_market_harmonics()
@@ -880,15 +1007,29 @@ def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, ha
             if entry:
                 base_units = entry.get('base_harmonics') or []
             if base_units:
-                harmonic_levels = compute_harmonic_levels(symbol, close, base_units, atr, point_value, multiples=(1,2,3), tol_frac=0.5)
-        # determine hit
-        for lvl in harmonic_levels:
-            try:
-                if abs(close - float(lvl['level'])) <= float(lvl.get('tolerance', 0.0)):
-                    harmonic_hit = True
-                    break
-            except Exception:
-                continue
+                harmonic_levels = compute_harmonic_levels_projected(ref_price, base_units, atr, point_value, cfg=cfg_mod, multiples=(1, 2, 3))
+                hit_method = hit_model_u
+
+        # Optional directional filtering around anchor.
+        try:
+            directional = bool(getattr(cfg_mod, 'HARMONIC_HIT_DIRECTIONAL', True)) if cfg_mod else True
+        except Exception:
+            directional = True
+        if directional and harmonic_levels:
+            if float(close) >= float(anchor_price):
+                harmonic_levels = [lvl for lvl in harmonic_levels if float(lvl.get('level', 0.0)) >= float(anchor_price)]
+            else:
+                harmonic_levels = [lvl for lvl in harmonic_levels if float(lvl.get('level', 0.0)) <= float(anchor_price)]
+
+        # Sort by distance to current close to keep nearest levels first.
+        try:
+            harmonic_levels.sort(key=lambda x: abs(float(x.get('level', 0.0)) - float(close)))
+        except Exception:
+            pass
+
+        # Determine hit by wick touch over lookback.
+        lb = getattr(cfg_mod, 'HARMONIC_HIT_LOOKBACK_BARS', 20) if cfg_mod else 20
+        harmonic_hit, hit_meta = detect_harmonic_hit(df, harmonic_levels, lookback_bars=lb)
     except Exception:
         harmonic_hit = False
 
@@ -1042,6 +1183,12 @@ def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, ha
             'anchor_price': anchor_price,
             'anchor_time': anchor_time,
             'anchor_kind': anchor_kind,
+            'harmonic_hit_level': hit_meta.get('hit_level'),
+            'harmonic_hit_harmonic': hit_meta.get('hit_harmonic'),
+            'harmonic_hit_time': hit_meta.get('hit_bar_time'),
+            'harmonic_hit_bar_index': hit_meta.get('hit_bar_index'),
+            'harmonic_hit_distance': hit_meta.get('hit_distance'),
+            'harmonic_hit_method': hit_method,
             'atr': atr,
             'atr_mean': atr_mean,
             'volume': vol,

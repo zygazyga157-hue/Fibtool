@@ -268,6 +268,14 @@ All existing global gates remain active before direction selection:
 - confirmations threshold
 
 Additional implementation details:
+- Harmonic-hit definition (non-trivial):
+  - Levels are projected from `anchor_price` when `config.HARMONIC_HIT_MODEL="ANCHOR"` (or from `close` when `"CLOSE"`).
+  - A hit is a wick-touch intersection within the last `HARMONIC_HIT_LOOKBACK_BARS` bars:
+    - bar range `[low, high]` intersects level zone `[level - tol, level + tol]`.
+  - Optional directional filtering (`HARMONIC_HIT_DIRECTIONAL=True`):
+    - If `close >= anchor_price`, consider only levels `>= anchor_price`; else only `<= anchor_price`.
+  - Tolerance formula:
+    - `tol = max(point * HARMONIC_HIT_TOL_MIN_POINTS, ATR * HARMONIC_HIT_TOL_ATR_MULT, abs(offset) * HARMONIC_HIT_TOL_OFFSET_FRAC)`
 - Session detection (`session_for_utc`, used when session is `auto`):
   - `HARMONIC_SESSION` env var overrides when set to `ASIA/LONDON/NEW_YORK/DEAD_ZONE`
   - otherwise `config.HARMONIC_SESSION` overrides when set to `ASIA/LONDON/NEW_YORK/DEAD_ZONE`

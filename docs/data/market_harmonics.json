@@ -20,7 +20,7 @@
 
   "US SP 500": { "base_harmonics": [110, 170], "common_multiples": [270, 350, 540] },
   "US Tech 100": { "base_harmonics": [90, 180], "common_multiples": [270, 360] },
-  "Wall Street 30": { "base_harmonics": [35, 70], "common_multiples": [105, 140] },
+  "US30": { "base_harmonics": [35, 70], "common_multiples": [105, 140] },
   "AAPL": { "base_harmonics": [18, 36], "common_multiples": [54, 72] },
   "TSLA": { "base_harmonics": [25, 50], "common_multiples": [75, 100] },
   "MSFT": { "base_harmonics": [20, 40], "common_multiples": [60, 80] },

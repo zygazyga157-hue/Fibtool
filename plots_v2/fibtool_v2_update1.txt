@@ -1,0 +1,214 @@
+content = """FIBTOOL V2 SCREENSHOT REVIEW + IMPROVEMENT ROADMAP
+
+1. MAJOR DISCOVERY
+The engine behaves more like a REACTION GEOMETRY ENGINE than a target predictor.
+
+Observed:
+- BTCUSD entered confluence zones and slowed
+- US30 entered zones and reacted before continuation
+- System predicts where behavior changes
+
+2. FIB PROJECTION ARCHITECTURE
+Pivot A -> Pivot B -> Pivot C -> Projection -> S9 overlap -> Confluence
+
+Levels:
+127.2
+161.8
+261.8
+423.6
+
+Projection + S9 + overlap = reaction region
+
+3. BTCUSD ANALYSIS
+
+Observed:
+- Strong bullish impulse
+- Correction
+- Projection generation
+- Price entered upper confluence zones
+- Price slowed and consolidated
+
+Confluences:
+99 | Fib1.618 | S9 180
+82 | Fib1.272 | S9 90
+89 | Fib0.382 | S9 -180
+
+Problems:
+
+A) Future projection horizon too short
+
+Likely:
+future_bars=10
+
+Recommended:
+projection_forward=40-60
+
+Reason:
+1.272 -> pause -> continue -> 1.618
+
+Need more chart space.
+
+B) Missing projection confidence
+
+Need:
+
+Projection Confidence
+Anchor Quality
+Structure Score
+
+Formula:
+
+0.35*anchor_score
++0.25*structure_score
++0.20*volatility
++0.20*timeframe_alignment
+
+4. US30 ANALYSIS
+
+Observed:
+Cleaner directional structure.
+
+US30:
+lower noise
+persistent structure
+
+BTC:
+high volatility
+liquidity spikes
+
+Need instrument normalization:
+
+BTC=.85
+US30=.96
+XAU=.93
+EURUSD=.98
+
+adjusted_score=
+base_score*instrument_weight
+
+5. LABEL EXPLAINABILITY PROBLEM
+
+Current:
+
+Confluence81|Fib1.272|S945°|Δ9.353|align0
+
+Suggested:
+
+HIGH CONFLUENCE RESISTANCE
+
+Score:81
+Components:
+Fib1.272
+S9 45°
+
+Distance:9.35%
+
+Bias:
+Moderate bearish reaction
+
+Confidence:
+High
+
+Anchor:
+H1 Pivot Pair
+
+6. ALIGNMENT ISSUE
+
+align0.00 appears repeatedly
+
+Investigate:
+alignment_score
+distance_metric
+normalization
+
+7. ANCHOR QUALITY ISSUE
+
+Current:
+latest pivots
+
+Recommended:
+score multiple ABC structures
+
+Factors:
+
+ATR
+trend continuation
+MSS
+sweep detection
+session weighting
+recency
+
+Select highest scoring ABC
+
+8. CONFLUENCE WIDTH ISSUE
+
+Current:
+fixed boxes
+
+Recommended:
+
+zone_width=ATR*(1-score)
+
+High score:
+thin zones
+
+Low score:
+wide zones
+
+9. OBJECT DENSITY ISSUE
+
+Split labels into:
+
+Zone title
+Score
+Components
+Bias
+Confidence
+Anchor source
+
+10. EXPLAINABILITY UPGRADE
+
+Objects become:
+
+price
++ geometry
++ explanation
++ trading intent
+
+Metadata:
+
+description
+summary
+trade_bias
+anchor_confidence
+reasoning
+related_objects
+risk_note
+operator_note
+
+11. PRIORITY TASKS
+
+1 Fix alignment
+2 Expand projection horizon
+3 Add confidence scoring
+4 Improve labels
+5 Multi-ABC evaluation
+6 Instrument normalization
+7 Dynamic zones
+8 Explainability
+
+FINAL:
+
+Math quality: strong
+Reaction quality: strong
+Weakness:
+presentation
+explainability
+confidence
+anchor selection
+future projection space
+
+Transition:
+
+Projection Engine
+→ Reaction Geometry Engine

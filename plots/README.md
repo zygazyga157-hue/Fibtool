@@ -11,6 +11,40 @@ Each tool focuses on a specific visualization type:
 - **Tool 4**: Trend Lines - Diagonal lines connecting pivots to confluences
 - **Tool 5**: Asia Sweep Plot - Asia ranges, Fib levels, and liquidity pools
 
+## Plots V2 (Native MT5 Objects)
+
+Plots V2 is an additive engine in `plots_v2/` that generates **MT5-native objects** from
+data-driven object specs (anchors + levels) and writes `.mq5` scripts into your MT5
+`MQL5/Scripts` folder.
+
+**Outputs**
+- Object specs (append-only): `outputs/mt5_objects_v2.jsonl`
+- Inspection CSV: `outputs/mt5_objects_v2.csv`
+- Lifecycle state: `outputs/mt5_object_state_v2.json`
+
+**MT5 Scripts Path**
+- Uses env var `FIBTOOL_MT5_DATA_FOLDER` when set (recommended).
+- Otherwise uses the same default MT5 profile folder as V1 tools.
+
+**Run examples**
+```bash
+python plots_v2/fib_retracement_plot.py --symbols XAUUSD --timeframes H1 --once
+python plots_v2/fib_projection_plot.py --symbols XAUUSD --timeframes H1 --once
+python plots_v2/gann_fan_plot.py --symbols XAUUSD --timeframes H1 --once
+python plots_v2/gann_grid_plot.py --symbols XAUUSD --timeframes H1 --once
+python plots_v2/fib_time_plot.py --symbols XAUUSD --timeframes H1 --once
+python plots_v2/square9_plot.py --symbols XAUUSD --timeframes H1 --once
+python plots_v2/confluence_plot.py --symbols XAUUSD --timeframes H1 --once
+python plots_v2/structure_overlay_plot.py --symbols XAUUSD --timeframes H1 --once
+```
+
+**Debug**
+- Use `--emit-spec-only` to skip `.mq5` generation and only write spec files.
+
+**Cleanup**
+- Each V2 run also writes a cleanup script named `FibtoolV2_<SYMBOL>_<TF>_Cleanup.mq5`.
+- Cleanup deletes only objects whose names start with `fibtool_v2_<symbol>_<tf>_`.
+
 ## Tool 1: Horizontal Lines Plot
 
 ### Features

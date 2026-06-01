@@ -111,6 +111,13 @@ HARMONIC_SQUARED_DAMPING = 0.8          # damping factor if harmonic_square is F
 HARMONIC_BARS_ELAPSED_WINDOW = 20       # lookback window for elapsed-bar anchor used in time/price squaring
 HARMONIC_MIN_CONFIRMATIONS = 2          # minimum confirmations to allow signal (harmonic_hit counts as 1, sma50 as +1)
 HARMONIC_WEIGHTED_SCORE_MIN = 0.7      # minimum weighted_score to generate signal (WEAK=0.2, so threshold allows weak signals)
+# Harmonic hit model (anchor/pivot-based)
+HARMONIC_HIT_MODEL = "ANCHOR"           # ANCHOR (project from anchor) or CLOSE (project from current close)
+HARMONIC_HIT_LOOKBACK_BARS = 20         # bars to scan for wick-touch hits
+HARMONIC_HIT_DIRECTIONAL = True         # filter levels above/below anchor based on close vs anchor
+HARMONIC_HIT_TOL_MIN_POINTS = 2         # min tolerance = point * this
+HARMONIC_HIT_TOL_ATR_MULT = 0.05        # ATR contribution to tolerance
+HARMONIC_HIT_TOL_OFFSET_FRAC = 0.25     # offset contribution to tolerance (offset = unit*multiple*point)
 # Whether to allow signals during EXTREME volatility. Default False (blocks EXTREME).
 HARMONIC_ALLOW_EXTREME = False
 # Session override: set to 'ASIA', 'LONDON', 'NEW_YORK', 'DEAD_ZONE' or 'auto' for auto-detect
@@ -222,7 +229,7 @@ ASIA_SWEEP_SWEEP_END = os.environ.get('ASIA_SWEEP_SWEEP_END', ASIA_SWEEP_LONDON_
 
 # MSS confirmation tuning
 ASIA_SWEEP_MSS_LOOKBACK = int(os.environ.get('ASIA_SWEEP_MSS_LOOKBACK', '3'))
-ASIA_SWEEP_CONFIRM_WINDOW_BARS = int(os.environ.get('ASIA_SWEEP_CONFIRM_WINDOW_BARS', '12'))  # M5 bars
+ASIA_SWEEP_CONFIRM_WINDOW_BARS = int(os.environ.get('ASIA_SWEEP_CONFIRM_WINDOW_BARS', '6'))  # M5 bars
 # MSS mode: keep "close" for spec-aligned confirmation (optional future extension).
 ASIA_SWEEP_MSS_MODE = os.environ.get('ASIA_SWEEP_MSS_MODE', 'close').strip().lower()
 

@@ -4,16 +4,18 @@
     "EURUSD",
     "GBPUSD",
     "USDJPY",
-    "GBPJPY"
+    "GBPJPY",
+    "USDCHF",
+    "XAUUSD",
+    "XAGUSD",
+    "US30",
+    "GBPJPY",
+    "EURJPY"
   ],
 
   "timeframes": [
-    "M1",
-    "M5",
     "M15",
-    "M30",
     "H1",
-    "H4",
-    "D1"
+    "H4"
   ]
 }

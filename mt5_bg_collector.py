@@ -30,15 +30,11 @@ except Exception:
     mt5 = None
     MT5_AVAILABLE = False
 
-# Optional plotting support
-try:
-    import matplotlib.pyplot as plt
-    import matplotlib.dates as mdates
-    MPL_AVAILABLE = True
-except Exception:
-    plt = None
-    mdates = None
-    MPL_AVAILABLE = False
+# Optional plotting support (disabled)
+# Matplotlib disabled to avoid optional dependency at runtime.
+plt = None
+mdates = None
+MPL_AVAILABLE = False
 
 # Pillow for image annotation (used when taking MT5 screenshot)
 try:
@@ -52,12 +48,12 @@ except Exception:
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), 'outputs')
 # Legacy paths for backward compatibility (XAUUSD)
-ANALYSIS_CSV = os.path.join(OUTPUT_DIR, 'xauusd_analysis.csv')
+ANALYSIS_CSV = os.path.join(OUTPUT_DIR, 'symbols_analysis.csv')
 CONFLUENCE_INDEX = os.path.join(OUTPUT_DIR, 'confluence_index.json')
 CONFLUENCE_TTL_MINUTES = 60
 
 # Default timeframe is H4 (user requested only H4)
-TIMEFRAME = mt5.TIMEFRAME_H4 if MT5_AVAILABLE else None
+TIMEFRAME = mt5.TIMEFRAME_H1 if MT5_AVAILABLE else None
 
 # Compute number of bars to fetch from MT5 based on desired history length.
 # Previously this was a fixed 500 bars. For better accuracy use ~6 months
