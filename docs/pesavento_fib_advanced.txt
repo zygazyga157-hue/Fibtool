@@ -1,0 +1,314 @@
+ADVANCED FIBONACCI EXPANSION + RETRACEMENT ENGINE (Pesavento Pattern
+Recognition Interpretation)
+
+Purpose This document upgrades the prior anchor logic by incorporating
+concepts from Larry Pesavento’s Fibonacci work and adapting them into
+programmable rules for Fib Retracements and Fib Expansions.
+
+  --------------------
+  1. CORE PHILOSOPHY
+  --------------------
+
+The market is treated as a sequence of repeating swings.
+
+The goal is not to predict tops or bottoms.
+
+The goal is:
+
+1.  Identify measurable swings
+2.  Measure their ratios
+3.  Compare swings
+4.  Project probable completion zones
+5.  Control risk
+
+The strategy assumes price swings repeat in ratio and proportion.
+
+Anchors are not random points. Anchors represent mathematically
+significant swings.
+
+  -------------------------
+  2. PIVOTS ARE STRUCTURE
+  -------------------------
+
+A pivot represents temporary completion of movement.
+
+Pivot High: High greater than surrounding highs.
+
+Pivot Low: Low lower than surrounding lows.
+
+Default:
+
+left = 5 right = 5
+
+Program rule:
+
+PivotHigh(i):
+
+high[i] >= highs(i-5:i+5)
+
+PivotLow(i):
+
+low[i] <= lows(i-5:i+5)
+
+Raw pivots alone are insufficient.
+
+Noise creates many false pivots.
+
+Therefore filtering is required.
+
+  ---------------------
+  3. SWING VALIDATION
+  ---------------------
+
+Swing:
+
+A → B
+
+Minimum:
+
+ABS(B-A) >= ATR(14) × 1.5
+
+Purpose:
+
+Reject tiny reactions.
+
+Pesavento repeatedly emphasized meaningful swings and symmetry rather
+than insignificant movement.
+
+Small swings distort ratio measurements.
+
+  -------------------------------
+  4. ALTERNATING STRUCTURE RULE
+  -------------------------------
+
+Valid:
+
+low → high high → low low → high → low high → low → high
+
+Rejected:
+
+high → high low → low
+
+Reason:
+
+Fibonacci relationships require completed impulse and reaction
+sequences.
+
+  ----------------------
+  5. RETRACEMENT LOGIC
+  ----------------------
+
+A = impulse origin B = impulse termination
+
+Bullish:
+
+A=pivot low B=pivot high
+
+Bearish:
+
+A=pivot high B=pivot low
+
+Fib orientation:
+
+0%=A 100%=B
+
+The Fib tool orientation is created automatically by anchor ordering.
+
+No separate 0% calculation exists.
+
+  -----------------------
+  6. RETRACEMENT RATIOS
+  -----------------------
+
+Primary:
+
+0.382 0.500 0.618 0.707 0.786
+
+Strong trend:
+
+0.382
+
+Normal:
+
+0.618 0.786
+
+Deep:
+
+1.000
+
+Interpretation:
+
+Very strong impulses tend to retrace shallow.
+
+Weak impulses tend toward deeper retracements.
+
+  --------------------------------
+  7. IMPULSE STRENGTH CLASSIFIER
+  --------------------------------
+
+Measure:
+
+ImpulseRange/ATR
+
+  =3:
+
+Strong
+
+Strong impulses suggest:
+
+Expected BC:
+
+0.382
+
+Normal:
+
+0.618–0.786
+
+This converts discretionary interpretation into code.
+
+  ------------------------
+  8. EXPANSION STRUCTURE
+  ------------------------
+
+Expansion requires:
+
+A-B-C
+
+Meaning:
+
+A=impulse start
+
+B=impulse end
+
+C=retracement completion
+
+Projected D generated mathematically.
+
+  ---------------------
+  9. EXPANSION RATIOS
+  ---------------------
+
+1.272 1.618 2.618 4.236
+
+Formula:
+
+D=C+((B-A)*ratio)
+
+1.272 is critical.
+
+It often appears immediately beyond failed highs/lows.
+
+1.618 acts as major expansion.
+
+  -------------------
+  10. FAILURE LOGIC
+  -------------------
+
+If point X is exceeded:
+
+Assume continuation.
+
+Projected target:
+
+1.27 or 1.618
+
+Continuation expansions become more probable.
+
+  ------------------
+  11. AB=CD FILTER
+  ------------------
+
+Measure:
+
+AB
+
+Compare:
+
+CD
+
+Expected:
+
+AB≈CD
+
+Expanded:
+
+CD=1.27×AB
+
+or
+
+CD=1.618×AB
+
+Similarity score:
+
+ABS(AB-CD)/AB
+
+Smaller value:
+
+Higher confidence.
+
+  -------------------
+  12. TIME SYMMETRY
+  -------------------
+
+Measure:
+
+Bars(A→B)
+
+Compare:
+
+Bars(C→D)
+
+Expected:
+
+Equal
+
+Expanded:
+
+1.27× 1.618×
+
+Price symmetry alone is incomplete.
+
+Time symmetry improves quality.
+
+  -----------------------
+  13. ANCHOR CONFIDENCE
+  -----------------------
+
+Score components:
+
+Pivot quality ATR magnitude Recency Liquidity sweep AB=CD quality Time
+symmetry
+
+confidence=weighted sum
+
+Highest confidence anchor selected.
+
+  ----------------------------
+  14. FINAL ENGINE HIERARCHY
+  ----------------------------
+
+Detect pivots
+
+Validate swing size
+
+Enforce alternation
+
+Measure impulse strength
+
+Select anchor candidates
+
+Compute confidence
+
+Assign A-B or A-B-C
+
+Apply retracement ratios
+
+Apply expansion ratios
+
+Validate AB=CD
+
+Validate symmetry
+
+Generate zones
+
+The strategy measures market geometry rather than guessing direction.

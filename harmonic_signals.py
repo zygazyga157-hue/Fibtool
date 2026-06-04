@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import html
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -69,6 +70,146 @@ def _save_state(path: str, state: dict) -> None:
         pass
 
 
+def _html_escape(value: Any) -> str:
+    return html.escape(str(value), quote=False)
+
+
+def _fmt_num(value: Any, digits: int = 2, default: str = "N/A") -> str:
+    try:
+        if value is None:
+            return default
+        return f"{float(value):.{int(digits)}f}"
+    except Exception:
+        return default
+
+
+def _fmt_price(value: Any, default: str = "N/A") -> str:
+    try:
+        if value is None:
+            return default
+        v = float(value)
+        if abs(v) >= 100:
+            return f"{v:.2f}"
+        if abs(v) >= 10:
+            return f"{v:.3f}"
+        return f"{v:.6f}".rstrip("0").rstrip(".")
+    except Exception:
+        return default
+
+
+def _fmt_bool(value: Any, true_text: str, false_text: str) -> str:
+    return true_text if bool(value) else false_text
+
+
+def _fmt_time(value: Any, default: str = "N/A") -> str:
+    if not value:
+        return default
+    try:
+        s = str(value).strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return str(value)
+
+
+def _signal_grade(weighted_score: Any) -> str:
+    try:
+        score = float(weighted_score or 0.0)
+    except Exception:
+        score = 0.0
+    if score >= 1.5:
+        return "A+"
+    if score >= 1.2:
+        return "A"
+    if score >= 0.9:
+        return "B"
+    return "C"
+
+
+def _load_previous_harmonic_signal(outputs_dir: str, symbol: str) -> Optional[dict]:
+    path = Path(outputs_dir) / "harmonic_signals.jsonl"
+    if not path.exists():
+        return None
+    wanted = str(symbol).upper()
+    latest: Optional[dict] = None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                if str(rec.get("symbol", "")).upper() == wanted:
+                    latest = rec
+    except Exception:
+        return None
+    return latest
+
+
+def _build_active_harmonics(meta: Dict[str, Any]) -> list[str]:
+    levels = meta.get("harmonic_levels") or []
+    hit = str(meta.get("harmonic_hit_harmonic") or "")
+    out: list[str] = []
+    if not isinstance(levels, list):
+        return out
+    for lvl in levels[:6]:
+        if not isinstance(lvl, dict):
+            continue
+        harmonic = str(lvl.get("harmonic", "?"))
+        level = _fmt_price(lvl.get("level"))
+        marker = " → HIT ✅" if hit and harmonic == hit else ""
+        out.append(f"{_html_escape(harmonic)} @ <b>{_html_escape(level)}</b>{marker}")
+    return out
+
+
+def _build_market_evolution(previous: Optional[dict], current_meta: Dict[str, Any], signal: str) -> Optional[dict]:
+    if not previous:
+        return None
+    prev_meta = previous.get("context_meta") or previous.get("context", {}).get("meta", {}) or {}
+    try:
+        prev_anchor = float(prev_meta.get("anchor_price"))
+        cur_anchor = float(current_meta.get("anchor_price"))
+    except Exception:
+        return None
+
+    side = str(signal).upper()
+    favorable = (side == "BUY" and cur_anchor > prev_anchor) or (side == "SELL" and cur_anchor < prev_anchor)
+    structure = "Higher Low Formed ✅" if side == "BUY" and cur_anchor > prev_anchor else (
+        "Lower High Formed ✅" if side == "SELL" and cur_anchor < prev_anchor else "Anchor Updated"
+    )
+    prev_signal = str(previous.get("signal", "")).upper()
+    status = "Trend Continuation" if favorable and prev_signal == side else "Structure Updated"
+
+    def _f(v: Any) -> Optional[float]:
+        try:
+            return float(v)
+        except Exception:
+            return None
+
+    prev_exp = _f(prev_meta.get("price_move_points"))
+    cur_exp = _f(current_meta.get("price_move_points"))
+    prev_hit = _f(prev_meta.get("harmonic_hit_level"))
+    cur_hit = _f(current_meta.get("harmonic_hit_level"))
+
+    return {
+        "previous_anchor": prev_anchor,
+        "current_anchor": cur_anchor,
+        "structure": structure,
+        "status": status,
+        "previous_expansion_points": prev_exp,
+        "current_expansion_points": cur_exp,
+        "previous_harmonic_level": prev_hit,
+        "current_harmonic_level": cur_hit,
+    }
+
+
 # ---------------------------------------------------------------------------
 # HTML message builder
 # ---------------------------------------------------------------------------
@@ -77,6 +218,7 @@ def _build_html_harmonic_signal(
     signal: str,
     context: Dict[str, Any],
     trade_setup: Dict[str, Any],
+    previous_signal: Optional[dict] = None,
 ) -> str:
     """Build a rich HTML Telegram message for a harmonic signal."""
     meta = context.get("meta", {})
@@ -84,80 +226,186 @@ def _build_html_harmonic_signal(
     structure = context.get("structure", {})
 
     side_emoji = "🟢" if signal == "BUY" else "🔴"
-    regime = meta.get("regime", "?")
-    vol_phase = gates.get("vol_phase", "?")
-    stress = meta.get("stress", "?")
-    resonance = meta.get("resonance_strength", "?")
-    session = meta.get("timeframe", "H1")
-    close = meta.get("close", 0)
+    timeframe = meta.get("timeframe", "H1")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    regime = _html_escape(meta.get("regime", "UNKNOWN"))
+    vol_phase = _html_escape(gates.get("vol_phase", "UNKNOWN"))
+    stress = _html_escape(meta.get("stress", "UNKNOWN"))
+    resonance = _html_escape(meta.get("resonance_strength", "UNKNOWN"))
+    close = meta.get("close")
     atr = meta.get("atr")
-    confirmations = gates.get("confirmations", 0)
-    weighted_score = gates.get("weighted_score", 0)
-    squared = gates.get("squared", False)
-    bars_elapsed = meta.get("bars_elapsed", 0)
-    anchor_kind = meta.get("anchor_kind", "?")
+    confirmations = int(gates.get("confirmations", 0) or 0)
+    weighted_score = float(gates.get("weighted_score", 0) or 0)
+    grade = _signal_grade(weighted_score)
 
     entry = trade_setup.get("entry", close)
-    sl = trade_setup.get("sl", 0)
-    risk = trade_setup.get("risk", 0)
+    sl = trade_setup.get("sl")
     scale = trade_setup.get("scale", 1)
+    method = trade_setup.get("method", "MULTIPLES")
+    invalidation_price = trade_setup.get("invalidation_price")
+    sl_buffer = trade_setup.get("sl_buffer")
+    trail_atr_mult = trade_setup.get("trail_atr_mult")
+    trail_after = trade_setup.get("trail_after")
+    be_trigger_r = trade_setup.get("be_trigger_r", 0.618)
     tp_levels = trade_setup.get("tp_levels", [])
     rr_levels = trade_setup.get("rr_levels", [])
-    be_trigger = trade_setup.get("be_trigger_0618", 0)
+    be_trigger = trade_setup.get("be_trigger_0618")
     base_h = trade_setup.get("base_harmonics", [])
     multiples = trade_setup.get("common_multiples", [])
+    k_atr = trade_setup.get("k_atr")
+    point = float(trade_setup.get("point", 0) or 0)
+    if point <= 0:
+        point = 1.0
+    try:
+        last_bar_points = abs(float(meta.get("price_move_last_bar", 0) or 0)) / point
+    except Exception:
+        last_bar_points = 0.0
 
     zone_lo = structure.get("zone_low")
     zone_mid = structure.get("zone_mid")
     zone_hi = structure.get("zone_high")
 
-    # Build TP lines
-    tp_lines = []
+    tp_lines: list[str] = []
     for i, (tp, rr) in enumerate(zip(tp_levels, rr_levels)):
-        marker = " ◀" if i == 0 else ""
-        tp_lines.append(f"  TP{i+1}: <b>{tp}</b>  (RR {rr}){marker}")
+        tp_lines.append(f"🎯 TP{i + 1}: <b>{_html_escape(_fmt_price(tp))}</b> ({_html_escape(_fmt_num(rr, 2))}R)")
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    active_lines = _build_active_harmonics(meta)
+    evolution = _build_market_evolution(previous_signal, meta, signal)
+    separator = "━━━━━━━━━━━━━━━━━━"
 
     parts = [
-        f"🔥 <b>HARMONIC SIGNAL</b>",
-        f"",
-        f"{side_emoji} <b>{signal}</b>  {symbol}",
-        f"🕒 {now}",
-        f"",
-        f"📐 Regime: <b>{regime}</b>  |  Vol: {vol_phase}",
-        f"🌡 Stress: {stress}  |  Resonance: {resonance}",
-        f"🔮 Squared: {'✅' if squared else '❌'}  (bars: {bars_elapsed}, anchor: {anchor_kind})",
-        f"📊 Confirmations: {confirmations}  |  Score: {weighted_score:.2f}",
+        "🔥 <b>HARMONIC SIGNAL</b>",
+        "",
+        f"{side_emoji} Symbol: <b>{_html_escape(symbol)}</b>",
+        f"📊 Action: <b>{_html_escape(signal)}</b>",
+        f"🕒 Time: {_html_escape(now)}",
+        f"⏰ Timeframe: <b>{_html_escape(timeframe)}</b>",
+        "",
+        separator,
+        "",
+        "🎯 <b>Signal Quality</b>",
+        "",
+        f"🏅 Signal Grade: <b>{grade}</b>",
+        f"⭐ Weighted Score: <b>{_fmt_num(weighted_score, 2)}</b>",
+        f"✅ Confirmations: <b>{confirmations}</b>",
+        "",
+        f"🔷 Resonance: <b>{resonance}</b>",
+        f"📈 Regime: <b>{regime}</b>",
+        f"🌡 Stress: <b>{stress}</b>",
+        f"📦 Volatility Phase: <b>{vol_phase}</b>",
+        "",
+        separator,
+        "",
+        "📍 <b>Harmonic Structure</b>",
+        "",
+        f"⚓ Anchor: <b>{_html_escape(str(meta.get('anchor_kind', 'N/A')).replace('_', ' ').title())}</b>",
+        f"📌 Anchor Price: <b>{_html_escape(_fmt_price(meta.get('anchor_price')))}</b>",
+        f"🕒 Anchor Time: {_html_escape(_fmt_time(meta.get('anchor_time')))}",
+        "",
+        f"🎵 Harmonic Hit: <b>{_html_escape(meta.get('harmonic_hit_harmonic', 'N/A'))}</b>",
+        f"🎯 Harmonic Level: <b>{_html_escape(_fmt_price(meta.get('harmonic_hit_level')))}</b>",
+        f"📏 Distance To Hit: <b>{_html_escape(_fmt_num(meta.get('harmonic_hit_distance'), 6))}</b>",
+        f"🔧 Detection Method: <b>{_html_escape(meta.get('harmonic_hit_method', 'N/A'))}</b>",
+        "",
+        f"📈 Price Expansion: <b>{_html_escape(_fmt_num(meta.get('price_move_points'), 0))} pts</b>",
+        f"📊 Last Bar Expansion: <b>{_html_escape(_fmt_num(last_bar_points, 0))} pts</b>",
+        f"⏳ Bars Since Anchor: <b>{_html_escape(meta.get('bars_elapsed', 'N/A'))}</b>",
+        "",
+        separator,
+        "",
+        "🏗 <b>Acceptance Structure</b>",
+        "",
+        f"Zone Low : {_html_escape(_fmt_price(zone_lo))}",
+        f"Zone Mid : <b>{_html_escape(_fmt_price(zone_mid))}</b>",
+        f"Zone High: {_html_escape(_fmt_price(zone_hi))}",
+        "",
+        _fmt_bool(structure.get("buy_acceptance"), "✅ Buy Acceptance Confirmed", "❌ Buy Acceptance"),
+        _fmt_bool(structure.get("sell_rejection"), "✅ Sell Rejection Confirmed", "❌ Sell Rejection"),
+        _fmt_bool(structure.get("volume_confirmed"), "✅ Volume Confirmed", "❌ Volume Confirmation"),
+        "",
+        f"Volume: {_html_escape(_fmt_num(meta.get('volume'), 0))}",
+        f"Average Volume: {_html_escape(_fmt_num(meta.get('avg_volume'), 1))}",
+        "",
+        separator,
+        "",
+        "💰 <b>Trade Plan</b>",
+        "",
+        f"Method: <b>{_html_escape(method)}</b>",
+        f"Entry : <b>{_html_escape(_fmt_price(entry))}</b>",
+        f"SL    : <b>{_html_escape(_fmt_price(sl))}</b>",
+        f"Scale : <b>{_html_escape(_fmt_num(scale, 2))}</b>",
     ]
 
-    if zone_mid is not None:
-        parts.append(f"")
-        parts.append(f"📍 Zone: {zone_lo} │ <b>{zone_mid}</b> │ {zone_hi}")
-
-    parts.append(f"")
-    parts.append(f"💰 Entry: <b>{entry}</b>  (zone-acceptance close)")
-    parts.append(f"🛑 SL: <b>{sl}</b>  (risk: {risk})")
+    if invalidation_price is not None:
+        parts.append(f"Invalidation: <b>{_html_escape(_fmt_price(invalidation_price))}</b>")
+    if sl_buffer is not None:
+        parts.append(f"SL Buffer   : {_html_escape(_fmt_price(sl_buffer))}")
 
     if tp_lines:
-        parts.append(f"")
-        parts.append(f"🎯 <b>TP Ladder</b>  (scale={scale})")
+        parts.append("")
         parts.extend(tp_lines)
+    if be_trigger is not None:
+        parts.extend([
+            "",
+            "📌 <b>Breakeven Trigger</b>",
+            f"{_html_escape(_fmt_price(be_trigger))} (+{_html_escape(_fmt_num(be_trigger_r, 2))}R)",
+        ])
+    if trail_after and trail_atr_mult is not None:
+        parts.extend([
+            "",
+            f"Trail: after {_html_escape(trail_after)} with {_html_escape(_fmt_num(trail_atr_mult, 2))} ATR",
+        ])
 
-    if be_trigger:
-        parts.append(f"")
-        parts.append(f"📐 Breakeven at <b>{be_trigger}</b>  (+0.618R)")
+    parts.extend([
+        "",
+        separator,
+        "",
+        "🎵 <b>Harmonic Framework</b>",
+        "",
+        f"Base Harmonics: {_html_escape(' • '.join(str(x) for x in base_h) if base_h else 'N/A')}",
+        f"Active Multiples: {_html_escape(' • '.join(str(x) for x in multiples) if multiples else 'N/A')}",
+        f"kATR: {_html_escape(_fmt_num(k_atr, 2))}",
+        f"ATR : {_html_escape(_fmt_num(atr, 9))}",
+    ])
 
-    if base_h or multiples:
-        parts.append(f"")
-        parts.append(f"💥 Harmonics: {base_h}  ×  {multiples}")
+    if active_lines:
+        parts.extend(["", separator, "", "🎼 <b>Active Harmonics</b>", ""])
+        parts.extend(active_lines)
 
-    if atr:
-        parts.append(f"📏 ATR: {atr:.6g}")
+    if evolution:
+        parts.extend([
+            "",
+            separator,
+            "",
+            "🧭 <b>Market Evolution</b>",
+            "",
+            f"Previous Anchor: {_html_escape(_fmt_price(evolution.get('previous_anchor')))}",
+            f"Current Anchor : <b>{_html_escape(_fmt_price(evolution.get('current_anchor')))}</b>",
+            "",
+            f"Structure: {_html_escape(evolution.get('structure', 'N/A'))}",
+            f"Expansion: {_html_escape(_fmt_num(evolution.get('previous_expansion_points'), 0))} pts → <b>{_html_escape(_fmt_num(evolution.get('current_expansion_points'), 0))} pts</b>",
+            f"Harmonic Level: {_html_escape(_fmt_price(evolution.get('previous_harmonic_level')))} → <b>{_html_escape(_fmt_price(evolution.get('current_harmonic_level')))}</b>",
+            f"Status: <b>{_html_escape(evolution.get('status', 'N/A'))}</b>",
+        ])
 
-    parts.append(f"")
-    parts.append(f"⚠️ <i>Not financial advice. Trade at your own risk.</i>")
-
+    parts.extend([
+        "",
+        separator,
+        "",
+        "🚦 <b>Gate Status</b>",
+        "",
+        _fmt_bool(gates.get("harmonic_hit"), "✅ Harmonic Hit", "❌ Harmonic Hit"),
+        _fmt_bool(gates.get("squared"), "✅ Squared", "❌ Market Not Squared"),
+        _fmt_bool(structure.get("buy_acceptance"), "✅ Buy Acceptance", "❌ Buy Acceptance"),
+        _fmt_bool(structure.get("sell_rejection"), "✅ Sell Rejection", "❌ Sell Rejection"),
+        _fmt_bool(structure.get("volume_confirmed"), "✅ Volume Confirmation", "❌ Volume Confirmation"),
+        _fmt_bool(weighted_score >= 0.7, "✅ Resonance Filter", "❌ Resonance Filter"),
+        "",
+        separator,
+        "",
+        "⚠️ <i>Harmonic resonance signal only. Always verify risk before entry.</i>",
+    ])
     return "\n".join(parts)
 
 
@@ -203,17 +451,38 @@ def run_harmonic_signal_for_symbol(
     # Instrument point
     point = 0.01
     try:
-        levels = meta.get("harmonic_levels", [])
-        if levels:
-            point = float(levels[0].get("tolerance", 0.01)) or 0.01
+        if meta.get("point") is not None:
+            point = float(meta.get("point")) or 0.01
+        else:
+            levels = meta.get("harmonic_levels", [])
+            if levels:
+                point = float(levels[0].get("tolerance", 0.01)) or 0.01
     except Exception:
         pass
 
     # Compute trade setup
     k_atr = float(getattr(_cfg, "HARMONIC_K_ATR", 0.25)) if _cfg else 0.25
+    method = str(getattr(_cfg, "HARMONIC_TP_SL_METHOD", "MULTIPLES")) if _cfg else "MULTIPLES"
+    sl_atr_buffer = float(getattr(_cfg, "HARMONIC_SWING_SL_ATR_BUFFER", 0.55)) if _cfg else 0.55
+    min_risk_atr = float(getattr(_cfg, "HARMONIC_SWING_MIN_RISK_ATR", 1.0)) if _cfg else 1.0
+    be_trigger_r = float(getattr(_cfg, "HARMONIC_SWING_BE_TRIGGER_R", 1.0)) if _cfg else 1.0
+    trail_atr_mult = float(getattr(_cfg, "HARMONIC_SWING_TRAIL_ATR_MULT", 2.0)) if _cfg else 2.0
     try:
         from harmonic_trader import get_harmonic_trade_setup
-        trade_setup = get_harmonic_trade_setup(symbol, sig, float(close), float(atr or 0), point, k_atr=k_atr)
+        trade_setup = get_harmonic_trade_setup(
+            symbol,
+            sig,
+            float(close),
+            float(atr or 0),
+            point,
+            k_atr=k_atr,
+            method=method,
+            context=context,
+            sl_atr_buffer=sl_atr_buffer,
+            min_risk_atr=min_risk_atr,
+            be_trigger_r=be_trigger_r,
+            trail_atr_mult=trail_atr_mult,
+        )
     except Exception:
         trade_setup = {}
 
@@ -230,6 +499,10 @@ def run_harmonic_signal_for_symbol(
     if selected_rr < rr_min:
         out["reason"] = f"rr_too_low({selected_rr}<{rr_min})"
         return out
+
+    previous_signal = _load_previous_harmonic_signal(outputs_dir, symbol)
+    signal_grade = _signal_grade(context.get("gates", {}).get("weighted_score", 0))
+    market_evolution = _build_market_evolution(previous_signal, meta, sig)
 
     # Cooldown dedupe
     cooldown = int(getattr(_cfg, "HARMONIC_AUTOTRADE_COOLDOWN_SECONDS", 3600)) if _cfg else 3600
@@ -255,7 +528,7 @@ def run_harmonic_signal_for_symbol(
         chat_id = f"{chat_id},{extra}" if chat_id else extra
 
     if send_enabled and token and chat_id:
-        html = _build_html_harmonic_signal(symbol, sig, context, trade_setup)
+        html = _build_html_harmonic_signal(symbol, sig, context, trade_setup, previous_signal=previous_signal)
         sent = _send_telegram(token, chat_id, html, parse_mode="HTML")
         out["sent"] = sent
 
@@ -278,6 +551,8 @@ def run_harmonic_signal_for_symbol(
             "context_meta": meta,
             "gates": context.get("gates", {}),
             "structure": context.get("structure", {}),
+            "signal_grade": signal_grade,
+            "market_evolution": market_evolution,
             "sent": out["sent"],
         }
         with open(jsonl_path, "a", encoding="utf-8") as f:

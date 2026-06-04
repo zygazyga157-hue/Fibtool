@@ -1,0 +1,131 @@
+
+STRUCTURE EVOLUTION SCORE (SES)
+==============================
+
+Purpose
+-------
+Classify whether a newly generated harmonic signal is a continuation,
+reload, reversal, or conflict relative to the immediately preceding
+signal for the same symbol and timeframe.
+
+Core Inputs
+-----------
+- Previous Anchor
+- Current Anchor
+- Previous Harmonic Level
+- Current Harmonic Level
+- Previous Harmonic Direction
+- Current Harmonic Direction
+- Previous Signal Direction
+- Current Signal Direction
+- Buy Acceptance
+- Sell Rejection
+- Market Regime
+- Expansion Size
+- Structure Status
+
+CLASSIFICATIONS
+
+1. CONTINUATION
+- Same signal direction
+- Anchor update supports trend
+- Harmonic framework remains aligned
+- Acceptance remains aligned
+
+Interpretation:
+"The existing auction is continuing."
+
+Example:
+USDCHF BUY #1 -> USDCHF BUY #2
+
+2. RELOAD
+- Same signal direction
+- New anchor forms
+- Improved harmonic entry
+- Trend remains intact
+
+Interpretation:
+"The market is offering another entry into the same trend."
+
+3. REVERSAL
+- Signal direction changes
+- Anchor updates
+- Harmonic sign flips
+- Acceptance flips
+- Previous narrative becomes invalid
+
+Interpretation:
+"The previous auction has ended and a new auction has begun."
+
+Example:
+EURUSD BUY -> EURUSD SELL
+
+Previous Anchor: 1.16149
+Current Anchor : 1.16454
+
+Previous Harmonic: 54x3
+Current Harmonic : -27x2
+
+Previous Direction: BUY
+Current Direction : SELL
+
+Classification:
+REVERSAL
+
+4. CONFLICT
+- Acceptance disagrees with broader structure
+- Harmonic signal and structure disagree
+- Market evolution ambiguous
+
+Interpretation:
+"Stand aside or reduce confidence."
+
+SUGGESTED SES SCORING
+
++2 Same-direction continuation
++2 Strong acceptance alignment
++1 Volume confirmation
++1 Harmonic framework alignment
++1 Expansion increasing
+
+-2 Direction flip
+-2 Harmonic sign flip
+-1 Acceptance contradiction
+-1 Expansion collapse
+
+Score Interpretation
+
+SES >= +4
+STRONG CONTINUATION
+
+SES +2 to +3
+CONTINUATION
+
+SES -1 to +1
+NEUTRAL / CONFLICT
+
+SES -2 to -3
+REVERSAL WARNING
+
+SES <= -4
+FULL REVERSAL
+
+CASE STUDIES
+
+USDCHF:
+BUY -> BUY
+Anchor Updated
+Structure Aligned
+Result: CONTINUATION
+
+EURUSD:
+BUY -> SELL
+Anchor Updated
+Harmonic Sign Flipped
+Acceptance Flipped
+Result: REVERSAL
+
+Key Insight:
+The Structure Evolution Score helps distinguish continuation signals
+from true reversals using information already present in the
+market_evolution block.

@@ -52,8 +52,8 @@ ANALYSIS_CSV = os.path.join(OUTPUT_DIR, 'symbols_analysis.csv')
 CONFLUENCE_INDEX = os.path.join(OUTPUT_DIR, 'confluence_index.json')
 CONFLUENCE_TTL_MINUTES = 60
 
-# Default timeframe is H4 (user requested only H4)
-TIMEFRAME = mt5.TIMEFRAME_H1 if MT5_AVAILABLE else None
+# Default timeframe is M15 (user requested only M15)
+TIMEFRAME = mt5.TIMEFRAME_M15 if MT5_AVAILABLE else None
 
 # Compute number of bars to fetch from MT5 based on desired history length.
 # Previously this was a fixed 500 bars. For better accuracy use ~6 months

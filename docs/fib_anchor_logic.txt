@@ -1,0 +1,222 @@
+Fib Expansion & Retracement Anchor Logic Analysis
+
+Scope
+
+Focus only on: - Fibonacci Retracement (OBJ_FIBO) - Fibonacci
+Expansion/Projection (OBJ_EXPANSION)
+
+Sources analyzed: - PLAN.md - README.md
+
+1. Pivot Detection Rules
+
+The system first detects pivot highs and pivot lows.
+
+Default settings: - pivot_left = 5 - pivot_right = 5
+
+Pivot High: Current candle high must be greater than or equal to highs
+within the left/right window.
+
+Pivot Low: Current candle low must be lower than or equal to lows within
+the left/right window.
+
+This creates market structure turning points.
+
+------------------------------------------------------------------------
+
+2. Anchor Candidate Ranking
+
+The engine does not simply choose the newest pivots.
+
+Candidates are ranked using:
+
+1.  Pivot quality
+
+    -   extremeness versus local window
+
+2.  ATR multiple
+
+    -   larger swings score higher
+
+3.  Liquidity sweep alignment
+
+    -   Asia sweep hints if available
+
+4.  Session weighting
+
+5.  Recency weighting
+
+Output metadata: - metadata.anchor_confidence -
+metadata.anchor_components
+
+------------------------------------------------------------------------
+
+3. Fib Retracement Anchor Selection
+
+Tool: fib_retracement_plot.py
+
+Uses: A → B anchors
+
+Selection process:
+
+Step 1: Collect all pivot points.
+
+Step 2: Sort by time.
+
+Step 3: Walk backward through pivots.
+
+Step 4: Find latest alternating pair:
+
+Required: pivot_low → pivot_high or pivot_high → pivot_low
+
+Same-type pivots are rejected.
+
+Example rejected: high → high low → low
+
+------------------------------------------------------------------------
+
+4. Minimum Swing Filter
+
+After an alternating pair is found:
+
+abs(B-A) >= 1.5 × ATR(14)
+
+If false:
+
+Reject pair
+
+Reason: Avoid tiny noisy movements.
+
+Only meaningful swings become anchors.
+
+------------------------------------------------------------------------
+
+5. Fib 0% Determination
+
+Fib 0% is not manually chosen.
+
+It depends on anchor order.
+
+Bullish swing:
+
+A = pivot_low B = pivot_high
+
+0% = A 100% = B
+
+Bearish swing:
+
+A = pivot_high B = pivot_low
+
+0% = A 100% = B
+
+Therefore:
+
+Fib orientation is controlled entirely by anchor ordering.
+
+------------------------------------------------------------------------
+
+6. Retracement Levels
+
+Ratios:
+
+0 0.236 0.382 0.5 0.618 0.786 1.0
+
+Extensions on same object:
+
+1.272 1.618
+
+Formula:
+
+Level Price = A + (B-A) × ratio
+
+Examples:
+
+0.618: A + (B-A)*0.618
+
+1.618: A + (B-A)*1.618
+
+------------------------------------------------------------------------
+
+7. Fib Expansion / Projection Anchor Selection
+
+Tool: fib_projection_plot.py
+
+Uses:
+
+A-B-C structure
+
+Selection:
+
+Last 3 alternating pivots
+
+Examples:
+
+pivot_low → pivot_high → pivot_low
+
+or
+
+pivot_high → pivot_low → pivot_high
+
+Requirements:
+
+Must alternate
+
+Must satisfy swing rules
+
+------------------------------------------------------------------------
+
+8. Expansion Anchor Meaning
+
+A: Impulse start
+
+B: Impulse end
+
+C: Retracement pivot
+
+Projected D: Generated mathematically
+
+Expansion levels:
+
+1.272 1.618 2.618 4.236
+
+------------------------------------------------------------------------
+
+9. Expansion Formula
+
+D = C + (B-A) × ratio
+
+Examples:
+
+1.272 1.618 2.618 4.236
+
+------------------------------------------------------------------------
+
+10. Final Decision Hierarchy
+
+Highest priority:
+
+Asia sweep structure hint
+
+Else:
+
+Ranked anchor candidates
+
+Else:
+
+Latest alternating pivots
+
+Then:
+
+ATR swing validation
+
+Then:
+
+Assign Fib orientation
+
+Then:
+
+Generate retracement or expansion levels
+
+Conclusion:
+
+Anchors determine everything. Fib 0%, direction, expansions and
+projections all depend on pivot ordering and ATR-qualified structure.

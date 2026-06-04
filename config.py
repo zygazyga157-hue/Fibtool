@@ -34,49 +34,36 @@ CANDLE_AUTOTRADE_ENABLED = True
 CANDLE_AUTOTRADE_DRY_RUN = False
 # Pattern scoring window and thresholds
 CANDLE_SIGNAL_WINDOW_BARS = 3
-CANDLE_AUTOTRADE_MIN_ABS_SCORE = 2.0
+CANDLE_AUTOTRADE_MIN_ABS_SCORE = 3.0
 # Strong-only patterns (directional) that must be present + fresh to qualify for auto-trade
 CANDLE_AUTOTRADE_REQUIRED_PATTERNS = [
-    # Top-ranked / strong set from the notebook ranking table
-    "CDL3LINESTRIKE",
-    "CDL3BLACKCROWS",
-    "CDL3WHITESOLDIERS",
-    "CDLEVENINGSTAR",
-    "CDLEVENINGDOJISTAR",
+    "CDLENGULFING",
     "CDLMORNINGSTAR",
     "CDLMORNINGDOJISTAR",
-    "CDLABANDONEDBABY",
-    "CDLBREAKAWAY",
+    "CDLEVENINGSTAR",
+    "CDLEVENINGDOJISTAR",
     "CDLPIERCING",
     "CDLDARKCLOUDCOVER",
-    "CDLINVERTEDHAMMER",
-    "CDLMATCHINGLOW",
-    "CDLHOMINGPIGEON",
-    "CDLIDENTICAL3CROWS",
-    "CDL3INSIDE",
+    "CDL3WHITESOLDIERS",
+    "CDL3BLACKCROWS",
     "CDL3OUTSIDE",
-    # Common, reliable staples (even if lower-ranked in the table)
-    "CDLENGULFING",
+    "CDLKICKING",
     "CDLHAMMER",
     "CDLSHOOTINGSTAR",
-    "CDLHANGINGMAN",
-    "CDLHARAMI",
-    "CDLHARAMICROSS",
-    "CDLKICKING",
 ]
 CANDLE_AUTOTRADE_FRESH_BARS = 1
 # Minimum bars required to compute ATR/patterns safely
 CANDLE_AUTOTRADE_MIN_BARS = 60
 # Market-condition filters
-CANDLE_AUTOTRADE_MIN_RANGE_ATR = 0.5
-CANDLE_AUTOTRADE_MAX_SPREAD_PIPS_FX = 2.5
-CANDLE_AUTOTRADE_MAX_SPREAD_ATR_FRAC = 0.04
+CANDLE_AUTOTRADE_MIN_RANGE_ATR = 0.8
+CANDLE_AUTOTRADE_MAX_SPREAD_PIPS_FX = 2.0
+CANDLE_AUTOTRADE_MAX_SPREAD_ATR_FRAC = 0.03
 # Pending entry sanity
-CANDLE_AUTOTRADE_MAX_ENTRY_DISTANCE_ATR = 1.5
+CANDLE_AUTOTRADE_MAX_ENTRY_DISTANCE_ATR = 1.0
 # If breakout already happened, allow market entry only if close enough to the planned entry.
-CANDLE_AUTOTRADE_LATE_ENTRY_MAX_BUFFER_MULT = 1.0
+CANDLE_AUTOTRADE_LATE_ENTRY_MAX_BUFFER_MULT = 0.5
 # Cooldown to avoid repeat exposure
-CANDLE_AUTOTRADE_COOLDOWN_SECONDS = 3600
+CANDLE_AUTOTRADE_COOLDOWN_SECONDS = 7200
 # State file used for per-symbol dedupe/cooldown
 CANDLE_AUTOTRADE_STATE_PATH = "outputs/candlestick_autotrade_state.json"
 # When True, suppress trades when indecision patterns dominate (no directional edge)
@@ -105,15 +92,15 @@ HARMONIC_RESONANCE_STRONG = 1.0         # base weight for STRONG resonance
 HARMONIC_RESONANCE_MODERATE = 0.6       # base weight for MODERATE resonance
 HARMONIC_RESONANCE_WEAK = 0.2           # base weight for WEAK resonance (instead of 0.0)
 HARMONIC_VOLUME_WINDOW = 50             # bars to use for volume average (use median)
-HARMONIC_REGIME_DAMPEN_UNKNOWN = 0.5   # multiply weighted_score by this if regime==UNKNOWN
-HARMONIC_REQUIRE_SQUARED = True        # if True, require harmonic_square; if False, use as optional damping (0.8x)
-HARMONIC_SQUARED_DAMPING = 0.8          # damping factor if harmonic_square is False but REQUIRE_SQUARED==False
+HARMONIC_REGIME_DAMPEN_UNKNOWN = 0.75   # multiply weighted_score by this if regime==UNKNOWN
+HARMONIC_REQUIRE_SQUARED = False        # if True, require harmonic_square; if False, use as optional damping (0.8x)
+HARMONIC_SQUARED_DAMPING = 0.85         # damping factor if harmonic_square is False but REQUIRE_SQUARED==False
 HARMONIC_BARS_ELAPSED_WINDOW = 20       # lookback window for elapsed-bar anchor used in time/price squaring
 HARMONIC_MIN_CONFIRMATIONS = 2          # minimum confirmations to allow signal (harmonic_hit counts as 1, sma50 as +1)
-HARMONIC_WEIGHTED_SCORE_MIN = 0.7      # minimum weighted_score to generate signal (WEAK=0.2, so threshold allows weak signals)
+HARMONIC_WEIGHTED_SCORE_MIN = 0.55      # minimum weighted_score to generate signal (WEAK=0.2, so threshold allows weak signals)
 # Harmonic hit model (anchor/pivot-based)
 HARMONIC_HIT_MODEL = "ANCHOR"           # ANCHOR (project from anchor) or CLOSE (project from current close)
-HARMONIC_HIT_LOOKBACK_BARS = 20         # bars to scan for wick-touch hits
+HARMONIC_HIT_LOOKBACK_BARS = 40       # bars to scan for wick-touch hits
 HARMONIC_HIT_DIRECTIONAL = True         # filter levels above/below anchor based on close vs anchor
 HARMONIC_HIT_TOL_MIN_POINTS = 2         # min tolerance = point * this
 HARMONIC_HIT_TOL_ATR_MULT = 0.05        # ATR contribution to tolerance
@@ -125,14 +112,19 @@ HARMONIC_ALLOW_EXTREME = False
 HARMONIC_SESSION = 'auto'
 # Spec-aligned structure/regime path (V2)
 HARMONIC_SPEC_V2_ENABLED = True
-HARMONIC_ZONE_ATR_MULT = 0.25
-HARMONIC_REJECTION_WICK_BODY_RATIO = 1.2
-HARMONIC_VOLUME_CONFIRM_MIN = "MODERATE"
-HARMONIC_BLOCK_UNKNOWN_REGIME = True
+HARMONIC_ZONE_ATR_MULT = 0.40          # size of harmonic zones based on ATR (e.g., 0.4 means zone extends 40% of ATR above/below level)
+HARMONIC_REJECTION_WICK_BODY_RATIO = 1.2  # max wick-to-body ratio for a "clean" hit (e.g., 1.2 means wick can be up to 120% of body size)
+HARMONIC_VOLUME_CONFIRM_MIN = "WEAK"  # minimum volume confirmation required to allow signal (None, WEAK, MODERATE, STRONG)
+HARMONIC_BLOCK_UNKNOWN_REGIME = False
 # Harmonic TP/SL computation
+HARMONIC_TP_SL_METHOD = "SWING_HYBRID"   # swing default: anchor invalidation SL + harmonic ladder TPs
 HARMONIC_K_ATR = 0.25                  # risk floor = k_atr * ATR
 HARMONIC_TP_LEVEL = 3                   # which TP from ladder to use for MT5 order (1=conservative)
 HARMONIC_RR_MIN = 1.0                   # minimum RR to fire signal/autotrade
+HARMONIC_SWING_SL_ATR_BUFFER = 0.55     # SL buffer beyond anchor/zone, adjusted by volatility phase
+HARMONIC_SWING_MIN_RISK_ATR = 1.0       # swing trades get at least 1 ATR of breathing room
+HARMONIC_SWING_BE_TRIGGER_R = 1.0       # move to breakeven after +1R / TP1 management
+HARMONIC_SWING_TRAIL_ATR_MULT = 2.0     # trail remainder after TP1 with 2 ATR
 # Harmonic autotrade
 HARMONIC_AUTOTRADE_ENABLED = True
 HARMONIC_AUTOTRADE_DRY_RUN = False  # live orders — confirm MT5 connection before enabling
@@ -186,18 +178,18 @@ MODEL_B_MIN_RISK_TICKS_INDICES = 14
 MODEL_C_RETRACE_RATIO = 0.618  # 0.5 = midpoint, 0.618 = deeper Fibonacci retracement
 
 # Model Selection Engine (MSE) thresholds
-MSE_SCORE_A_THRESHOLD = 3.5       # abs(score) >= this + momentum > reversal → Model A
+MSE_SCORE_A_THRESHOLD = 4.0       # abs(score) >= this + momentum > reversal → Model A
 MSE_SCORE_B_THRESHOLD = 2.0       # unused by cascade but reserved for future gating
-MSE_BREAKOUT_SCORE_THRESHOLD = 0.6  # breakout_score >= this → Model B
+MSE_BREAKOUT_SCORE_THRESHOLD = 0.75  # breakout_score >= this → Model B
 
 # ATR / Volatility thresholds for MSE
 MSE_ATR_RATIO_HIGH = 0.02         # atr_ratio >= this → High volatility (breakouts likely)
 MSE_ATR_RATIO_LOW = 0.005         # atr_ratio <= this → Low volatility (compression, retrace)
 
 # Reflexive RR — single base and bounds
-MSE_RR_BASE = 2.0                 # starting RR before reflexive multipliers
-MSE_RR_FLOOR = 1.2                # minimum reflexive RR (conservative)
-MSE_RR_CEILING = 4.5              # maximum reflexive RR (aggressive)
+MSE_RR_BASE = 2.5                # starting RR before reflexive multipliers
+MSE_RR_FLOOR = 1.8               # minimum reflexive RR (conservative)
+MSE_RR_CEILING = 6.0             # maximum reflexive RR (aggressive)
 
 # Asia Sweep strategy runtime environment variables (can be overridden via env)
 import os
@@ -248,6 +240,14 @@ ASIA_SWEEP_ML_ENABLED = os.environ.get('ASIA_SWEEP_ML_ENABLED', '1') in ('1', 't
 # - a model root that contains current.json -> active_dir (hot-reload friendly)
 ASIA_SWEEP_ML_MODEL_DIR = os.environ.get('ASIA_SWEEP_ML_MODEL_DIR', 'outputs/models/asia_sweep_mss')
 ASIA_SWEEP_ML_MIN_PROB = float(os.environ.get('ASIA_SWEEP_ML_MIN_PROB', '0.60'))
+
+# Candlestick + Asia Sweep ML integration.
+# Candlestick features are safe to compute/log by default; hard blocking is opt-in.
+ASIA_SWEEP_CANDLE_FEATURES_ENABLED = os.environ.get('ASIA_SWEEP_CANDLE_FEATURES_ENABLED', '1') in ('1', 'true', 'True', 'yes') # if True, compute candlestick pattern features and feed them to the ML model for Asia Sweep signals. These features can help the ML model learn to recognize when certain patterns (e.g., strong reversal patterns) are present, which may improve classification performance. Keep enabled by default since it's purely additive and doesn't block signals on its own. Note: computing candlestick features requires fetching recent bars and running pattern recognition logic, which adds some overhead but can provide valuable context for ML classification.
+ASIA_SWEEP_CANDLE_M15_CONTEXT_ENABLED = os.environ.get('ASIA_SWEEP_CANDLE_M15_CONTEXT_ENABLED', '1') in ('1', 'true', 'True', 'yes') # if True, feed recent M15 candle patterns as features to the ML model (requires M15 fetch); if False, only use M5/MSS features. Note: M15 patterns can provide valuable context for ML classification, but enabling this will increase data fetching and processing requirements. Start with it disabled for a leaner setup, then consider enabling once the core ML pipeline is validated and you want to experiment with additional features.
+ASIA_SWEEP_CANDLE_HARD_BLOCK_ENABLED = os.environ.get('ASIA_SWEEP_CANDLE_HARD_BLOCK_ENABLED', '1') in ('1', 'true', 'True', 'yes') # if True, certain candlestick patterns + conditions will BLOCK signals regardless of ML output (fail-closed). If False, candlestick factors are only fed as features to the ML model (which can learn to override/block based on them if it improves performance).
+ASIA_SWEEP_CANDLE_HARD_BLOCK_MIN_SCORE = float(os.environ.get('ASIA_SWEEP_CANDLE_HARD_BLOCK_MIN_SCORE', '1.0')) # minimum absolute pattern score to trigger a hard block (e.g., 1.0 means any strong pattern triggers the block)
+ASIA_SWEEP_CANDLE_HARD_BLOCK_ALLOW_NEUTRAL = os.environ.get('ASIA_SWEEP_CANDLE_HARD_BLOCK_ALLOW_NEUTRAL', '1') in ('1', 'true', 'True', 'yes') # if True, allow signals even if classification is HOLD/NEUTRAL (otherwise only BLOCK)
 
 # Optional pretrade RR override (normally read from outputs/admin_settings.json).
 # Leave empty/unset to use admin settings.

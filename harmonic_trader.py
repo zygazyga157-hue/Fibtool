@@ -862,6 +862,135 @@ def compute_multiples_tp_sl(
         return {}
 
 
+def _volatility_stop_buffer_mult(vol_phase: str, default_mult: float) -> float:
+    """Return a swing stop buffer multiplier adjusted for the current volatility phase."""
+    phase = str(vol_phase or "NORMAL").upper()
+    phase_mults = {
+        "COMPRESSION": 0.45,
+        "NORMAL": 0.55,
+        "EXPANSION": 0.75,
+        "EXTREME": 1.00,
+    }
+    try:
+        return float(phase_mults.get(phase, float(default_mult)))
+    except Exception:
+        return 0.55
+
+
+def compute_swing_hybrid_tp_sl(
+    symbol: str,
+    side: str,
+    entry: float,
+    atr: float,
+    point: float,
+    base_harmonics: List[float],
+    common_multiples: List[float],
+    *,
+    anchor_price: Optional[float] = None,
+    zone_low: Optional[float] = None,
+    zone_high: Optional[float] = None,
+    vol_phase: str = "NORMAL",
+    k_atr: float = 0.25,
+    sl_atr_buffer: float = 0.55,
+    min_risk_atr: float = 1.0,
+    be_trigger_r: float = 1.0,
+    trail_atr_mult: float = 2.0,
+) -> Dict[str, Any]:
+    """Compute swing-oriented TP/SL using anchor invalidation + harmonic ladder targets.
+
+    This is the selected production method for Harmonic V2 swing trading:
+      - SL sits beyond the harmonic anchor/acceptance zone with ATR buffer.
+      - Minimum risk is at least min_risk_atr * ATR so swing trades have room.
+      - TPs remain harmonically projected using common multiples and risk-scaled laddering.
+      - Management metadata describes breakeven/trailing behavior for operators/autotrade audit.
+    """
+    import math as _m
+    try:
+        if anchor_price is None:
+            return compute_multiples_tp_sl(
+                symbol, side, entry, atr, point, base_harmonics, common_multiples, k_atr=k_atr
+            )
+
+        side_u = str(side).upper()
+        entry_f = float(entry)
+        atr_f = float(atr) if atr else 0.0
+        point_f = float(point) if point else 1e-6
+        anchor_f = float(anchor_price)
+        buffer_mult = _volatility_stop_buffer_mult(vol_phase, sl_atr_buffer)
+        stop_buffer = max(point_f, atr_f * buffer_mult)
+
+        if side_u in ("BUY", "LONG"):
+            invalidation = min(anchor_f, float(zone_low) if zone_low is not None else anchor_f)
+            raw_sl = invalidation - stop_buffer
+            risk = entry_f - raw_sl
+        else:
+            invalidation = max(anchor_f, float(zone_high) if zone_high is not None else anchor_f)
+            raw_sl = invalidation + stop_buffer
+            risk = raw_sl - entry_f
+
+        min_risk = max(point_f, atr_f * float(min_risk_atr))
+        if risk <= 0:
+            risk = min_risk
+        else:
+            risk = max(risk, min_risk)
+
+        if side_u in ("BUY", "LONG"):
+            sl = round(entry_f - risk, 8)
+        else:
+            sl = round(entry_f + risk, 8)
+
+        raw_step = min(float(m) for m in common_multiples) * point_f
+        if raw_step <= 0:
+            raw_step = point_f
+        scale = max(1, _m.ceil(risk / raw_step))
+
+        tp_levels = []
+        rr_levels = []
+        for mult in sorted(float(m) for m in common_multiples):
+            offset = mult * scale * point_f
+            if side_u in ("BUY", "LONG"):
+                tp = round(entry_f + offset, 8)
+            else:
+                tp = round(entry_f - offset, 8)
+            tp_levels.append(tp)
+            rr = round(abs(tp - entry_f) / risk, 4) if risk > 0 else 0.0
+            rr_levels.append(rr)
+
+        be_offset = float(be_trigger_r) * risk
+        if side_u in ("BUY", "LONG"):
+            be_trigger = round(entry_f + be_offset, 8)
+        else:
+            be_trigger = round(entry_f - be_offset, 8)
+
+        return {
+            'symbol': symbol,
+            'side': side_u,
+            'entry': entry_f,
+            'sl': sl,
+            'risk': round(risk, 8),
+            'scale': scale,
+            'tp_levels': tp_levels,
+            'rr_levels': rr_levels,
+            'be_trigger_0618': be_trigger,
+            'be_trigger_r': float(be_trigger_r),
+            'base_harmonics': list(base_harmonics),
+            'common_multiples': list(common_multiples),
+            'k_atr': None,
+            'point': point_f,
+            'method': 'SWING_HYBRID',
+            'sl_basis': 'anchor_invalidation_atr_buffer',
+            'anchor_price': anchor_f,
+            'invalidation_price': round(float(invalidation), 8),
+            'sl_buffer': round(float(stop_buffer), 8),
+            'sl_atr_buffer_mult': round(float(buffer_mult), 4),
+            'min_risk_atr': float(min_risk_atr),
+            'trail_after': 'TP1',
+            'trail_atr_mult': float(trail_atr_mult),
+        }
+    except Exception:
+        return {}
+
+
 def get_harmonic_trade_setup(
     symbol: str,
     side: str,
@@ -869,10 +998,16 @@ def get_harmonic_trade_setup(
     atr: float,
     point: float,
     k_atr: float = 0.25,
+    method: str = "MULTIPLES",
+    context: Optional[Dict[str, Any]] = None,
+    sl_atr_buffer: float = 0.55,
+    min_risk_atr: float = 1.0,
+    be_trigger_r: float = 1.0,
+    trail_atr_mult: float = 2.0,
 ) -> Dict[str, Any]:
     """Load harmonics for *symbol* from market_harmonics.json and compute TP/SL.
 
-    Returns the output of compute_multiples_tp_sl or {} if no harmonics found.
+    Returns the selected TP/SL setup or {} if no harmonics found.
     """
     mh = load_market_harmonics()
     # try exact key, then uppercase strip
@@ -893,7 +1028,40 @@ def get_harmonic_trade_setup(
     multiples = entry_data.get('common_multiples', [])
     if not base or not multiples:
         return {}
-    return compute_multiples_tp_sl(symbol, side, entry, atr, point, base, multiples, k_atr=k_atr)
+
+    method_u = str(method or "MULTIPLES").upper()
+    ctx = context or {}
+    meta = ctx.get('meta', {}) if isinstance(ctx, dict) else {}
+    structure = ctx.get('structure', {}) if isinstance(ctx, dict) else {}
+    gates = ctx.get('gates', {}) if isinstance(ctx, dict) else {}
+
+    if method_u in ("SWING_HYBRID", "HYBRID_SWING"):
+        setup = compute_swing_hybrid_tp_sl(
+            symbol,
+            side,
+            entry,
+            atr,
+            point,
+            base,
+            multiples,
+            anchor_price=meta.get('anchor_price'),
+            zone_low=structure.get('zone_low'),
+            zone_high=structure.get('zone_high'),
+            vol_phase=gates.get('vol_phase', 'NORMAL'),
+            k_atr=k_atr,
+            sl_atr_buffer=sl_atr_buffer,
+            min_risk_atr=min_risk_atr,
+            be_trigger_r=be_trigger_r,
+            trail_atr_mult=trail_atr_mult,
+        )
+        if setup:
+            return setup
+
+    setup = compute_multiples_tp_sl(symbol, side, entry, atr, point, base, multiples, k_atr=k_atr)
+    if setup:
+        setup['method'] = 'MULTIPLES'
+        setup['sl_basis'] = 'harmonic_multiple_or_atr_floor'
+    return setup
 
 
 def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, harmonics: Optional[list] = None,
@@ -1191,6 +1359,7 @@ def analyze_symbol_live(symbol: str, timeframe: str = 'H1', count: int = 500, ha
             'harmonic_hit_method': hit_method,
             'atr': atr,
             'atr_mean': atr_mean,
+            'point': point_value,
             'volume': vol,
             'avg_volume': avg_vol,
             'resonance_strength': resonance_strength,

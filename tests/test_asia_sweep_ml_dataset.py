@@ -105,7 +105,7 @@ def test_simulate_label_short_sell_stop_tp_win():
 def test_time_based_split_is_monotonic():
     df = pd.DataFrame(
         {
-            "t0": pd.date_range("2026-01-01", periods=100, freq="H", tz="UTC"),
+            "t0": pd.date_range("2026-01-01", periods=100, freq="h", tz="UTC"),
             "symbol": ["EURUSD"] * 100,
             "label": [0] * 100,
         }
@@ -119,4 +119,3 @@ def test_time_based_split_is_monotonic():
             assert val["t0"].max() <= test["t0"].min()
         else:
             assert train["t0"].max() <= test["t0"].min()
-

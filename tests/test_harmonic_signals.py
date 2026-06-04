@@ -93,12 +93,83 @@ class TestComputeMultiplesTPSL:
         expected_be = 100 + 0.618 * ts["risk"]
         assert abs(ts["be_trigger_0618"] - expected_be) < 0.0001
 
+    def test_swing_hybrid_uses_anchor_invalidation_stop(self):
+        """Swing method should place SL beyond anchor/zone instead of using a wide multiples-only stop."""
+        from harmonic_trader import compute_swing_hybrid_tp_sl
+
+        ts = compute_swing_hybrid_tp_sl(
+            symbol="USDCHF",
+            side="BUY",
+            entry=0.79063,
+            atr=0.000792857,
+            point=0.00001,
+            base_harmonics=[27, 54],
+            common_multiples=[81, 108],
+            anchor_price=0.78842,
+            zone_low=0.789635,
+            zone_high=0.790445,
+            vol_phase="COMPRESSION",
+        )
+
+        assert ts["method"] == "SWING_HYBRID"
+        assert ts["sl_basis"] == "anchor_invalidation_atr_buffer"
+        assert ts["sl"] < 0.78842
+        assert ts["risk"] < 0.01
+        assert ts["be_trigger_r"] == 1.0
+        assert ts["tp_levels"][0] > ts["entry"]
+        assert ts["rr_levels"][0] >= 1.0
+
 
 # ---------------------------------------------------------------------------
 # Harmonic signals HTML builder
 # ---------------------------------------------------------------------------
 
 class TestHarmonicSignalHTML:
+    def _rich_context(self):
+        return {
+            "meta": {
+                "symbol": "USDCHF",
+                "timeframe": "H1",
+                "regime": "TRENDING",
+                "close": 0.79063,
+                "atr": 0.000792857,
+                "stress": "LOW",
+                "resonance_strength": "STRONG",
+                "price_move_points": 221,
+                "price_move_last_bar": 0.00044,
+                "anchor_price": 0.78842,
+                "anchor_time": "2026-06-03 11:00:00",
+                "anchor_kind": "swing_low",
+                "bars_elapsed": 3,
+                "harmonic_hit_level": 0.79004,
+                "harmonic_hit_harmonic": "54x3",
+                "harmonic_hit_distance": 0.00059,
+                "harmonic_hit_method": "ANCHOR",
+                "volume": 1501,
+                "avg_volume": 1003.5,
+                "harmonic_levels": [
+                    {"level": 0.79004, "harmonic": "54x3"},
+                    {"level": 0.7895, "harmonic": "54x2"},
+                    {"level": 0.78923, "harmonic": "27x3"},
+                ],
+            },
+            "gates": {
+                "harmonic_hit": True,
+                "squared": False,
+                "vol_phase": "COMPRESSION",
+                "weighted_score": 1.2,
+                "confirmations": 2,
+            },
+            "structure": {
+                "zone_low": 0.789635,
+                "zone_mid": 0.79004,
+                "zone_high": 0.790445,
+                "buy_acceptance": True,
+                "sell_rejection": False,
+                "volume_confirmed": True,
+            },
+        }
+
     def test_build_html_contains_key_sections(self):
         from harmonic_signals import _build_html_harmonic_signal
 
@@ -129,6 +200,118 @@ class TestHarmonicSignalHTML:
         assert "SL" in html
         assert "TP" in html
         assert "Scale" in html or "scale" in html.lower()
+
+    def test_signal_grade_thresholds(self):
+        from harmonic_signals import _signal_grade
+
+        assert _signal_grade(1.5) == "A+"
+        assert _signal_grade(1.2) == "A"
+        assert _signal_grade(0.9) == "B"
+        assert _signal_grade(0.1) == "C"
+
+    def test_rich_html_contains_professional_sections_and_hit_ladder(self):
+        from harmonic_signals import _build_html_harmonic_signal
+
+        trade_setup = compute_multiples_tp_sl(
+            "USDCHF", "BUY", 0.79063, 0.000792857, 0.000405,
+            [27, 54], [81, 108],
+        )
+        html = _build_html_harmonic_signal(
+            symbol="USDCHF",
+            signal="BUY",
+            context=self._rich_context(),
+            trade_setup=trade_setup,
+        )
+
+        for section in (
+            "Signal Quality",
+            "Harmonic Structure",
+            "Acceptance Structure",
+            "Trade Plan",
+            "Harmonic Framework",
+            "Active Harmonics",
+            "Gate Status",
+        ):
+            assert section in html
+        assert "Signal Grade: <b>A</b>" in html
+        assert "54x3" in html
+        assert "HIT ✅" in html
+        assert "❌ Market Not Squared" in html
+
+    def test_market_evolution_for_previous_buy_signal(self):
+        from harmonic_signals import _build_html_harmonic_signal, _build_market_evolution
+
+        context = self._rich_context()
+        current_meta = context["meta"]
+        current_meta["anchor_price"] = 0.78958
+        current_meta["price_move_points"] = 257
+        current_meta["harmonic_hit_level"] = 0.7912
+        previous = {
+            "symbol": "USDCHF",
+            "signal": "BUY",
+            "context_meta": {
+                "anchor_price": 0.78842,
+                "price_move_points": 221,
+                "harmonic_hit_level": 0.79004,
+            },
+        }
+        evo = _build_market_evolution(previous, current_meta, "BUY")
+        assert evo["structure"] == "Higher Low Formed ✅"
+        assert evo["status"] == "Trend Continuation"
+
+        trade_setup = compute_multiples_tp_sl(
+            "USDCHF", "BUY", 0.79215, 0.000927143, 0.000405,
+            [27, 54], [81, 108],
+        )
+        html = _build_html_harmonic_signal("USDCHF", "BUY", context, trade_setup, previous_signal=previous)
+        assert "Market Evolution" in html
+        assert "Higher Low Formed" in html
+        assert "221 pts" in html
+        assert "257 pts" in html
+
+    def test_formatter_handles_missing_optional_fields(self):
+        from harmonic_signals import _build_html_harmonic_signal
+
+        html = _build_html_harmonic_signal(
+            symbol="TEST",
+            signal="BUY",
+            context={"meta": {"close": 100}, "gates": {}, "structure": {}},
+            trade_setup={"entry": 100, "sl": 99, "tp_levels": [102], "rr_levels": [2]},
+        )
+        assert "HARMONIC SIGNAL" in html
+        assert "N/A" in html
+
+    def test_signal_dispatcher_uses_swing_hybrid_method(self, tmp_path):
+        from harmonic_signals import run_harmonic_signal_for_symbol
+
+        context = self._rich_context()
+        context["meta"]["point"] = 0.00001
+        cfg = types.SimpleNamespace(
+            HARMONIC_K_ATR=0.25,
+            HARMONIC_TP_SL_METHOD="SWING_HYBRID",
+            HARMONIC_SWING_SL_ATR_BUFFER=0.55,
+            HARMONIC_SWING_MIN_RISK_ATR=1.0,
+            HARMONIC_SWING_BE_TRIGGER_R=1.0,
+            HARMONIC_SWING_TRAIL_ATR_MULT=2.0,
+            HARMONIC_TP_LEVEL=1,
+            HARMONIC_RR_MIN=1.0,
+            HARMONIC_AUTOTRADE_COOLDOWN_SECONDS=0,
+            HARMONIC_AUTOTRADE_STATE_PATH=str(tmp_path / "harmonic_state.json"),
+            HARMONIC_SIGNALS_TELEGRAM=False,
+        )
+
+        out = run_harmonic_signal_for_symbol(
+            "USDCHF",
+            {"signal": "BUY", "context": context},
+            cfg=cfg,
+            outputs_dir=str(tmp_path),
+        )
+
+        assert out["reason"] == "telegram_disabled"
+        assert out["trade_setup"]["method"] == "SWING_HYBRID"
+        assert out["trade_setup"]["sl"] < context["meta"]["anchor_price"]
+        row = json.loads((tmp_path / "harmonic_signals.jsonl").read_text(encoding="utf-8").splitlines()[0])
+        assert row["trade_setup"]["method"] == "SWING_HYBRID"
 
 
 # ---------------------------------------------------------------------------

@@ -145,16 +145,37 @@ def evaluate_harmonic_autotrade_candidate(
 
     point = 0.01
     try:
-        levels = meta.get("harmonic_levels", [])
-        if levels:
-            point = float(levels[0].get("tolerance", 0.01)) or 0.01
+        if meta.get("point") is not None:
+            point = float(meta.get("point")) or 0.01
+        else:
+            levels = meta.get("harmonic_levels", [])
+            if levels:
+                point = float(levels[0].get("tolerance", 0.01)) or 0.01
     except Exception:
         pass
 
     k_atr = float(getattr(_cfg, "HARMONIC_K_ATR", 0.25)) if _cfg else 0.25
+    method = str(getattr(_cfg, "HARMONIC_TP_SL_METHOD", "MULTIPLES")) if _cfg else "MULTIPLES"
+    sl_atr_buffer = float(getattr(_cfg, "HARMONIC_SWING_SL_ATR_BUFFER", 0.55)) if _cfg else 0.55
+    min_risk_atr = float(getattr(_cfg, "HARMONIC_SWING_MIN_RISK_ATR", 1.0)) if _cfg else 1.0
+    be_trigger_r = float(getattr(_cfg, "HARMONIC_SWING_BE_TRIGGER_R", 1.0)) if _cfg else 1.0
+    trail_atr_mult = float(getattr(_cfg, "HARMONIC_SWING_TRAIL_ATR_MULT", 2.0)) if _cfg else 2.0
     try:
         from harmonic_trader import get_harmonic_trade_setup
-        trade_setup = get_harmonic_trade_setup(symbol, sig, float(close), float(atr or 0), point, k_atr=k_atr)
+        trade_setup = get_harmonic_trade_setup(
+            symbol,
+            sig,
+            float(close),
+            float(atr or 0),
+            point,
+            k_atr=k_atr,
+            method=method,
+            context=context,
+            sl_atr_buffer=sl_atr_buffer,
+            min_risk_atr=min_risk_atr,
+            be_trigger_r=be_trigger_r,
+            trail_atr_mult=trail_atr_mult,
+        )
     except Exception:
         trade_setup = {}
 

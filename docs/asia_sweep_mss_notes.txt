@@ -1,0 +1,165 @@
+
+ASIA SWEEP LONDON MSS - DATASET & FEATURE PIPELINE NOTES
+========================================================
+
+FILE 1: prepare_dataset.py
+--------------------------
+Purpose:
+- Replays TRUE M5 bars.
+- Generates one row per qualified Asia Sweep -> MSS confirmation.
+- Labels trades based on TP before SL before London session end.
+- Uses worst-case execution logic (SL wins ties).
+- Supports both long and short confirmations.
+
+Key Components:
+- load_m5_bars()
+- load_m15_bars()
+- compute_atr14()
+- compute_mss_flags()
+- compute_asia_range()
+- find_sweep_events()
+- choose_confirmation()
+- choose_all_confirmations()
+- simulate_label()
+- build_dataset_for_symbol()
+
+Dataset Output:
+- t0
+- symbol
+- label
+- FEATURE_COLS
+- debug fields:
+    side
+    entry
+    stop
+    tp
+    sweep_time
+    fill_time
+
+Training Run Results
+--------------------
+
+Run 1 (SMOTE + Residual):
+- Dataset rows: 384
+- Best Validation AUC: 0.7544
+- Test AUC: 0.5510
+- Test Accuracy: 0.7414
+- Precision: 0.2500
+- Recall: 0.3333
+- F1: 0.2857
+
+Run 2 (No SMOTE, No Residual):
+- Best Validation AUC: 1.0000
+- Test AUC: 0.5669
+- Test Accuracy: 0.8276
+- Precision: 0.3333
+- Recall: 0.1111
+- F1: 0.1667
+
+Observations:
+- Validation performance is much higher than test performance.
+- Dataset size remains very small (384 samples).
+- Evidence of overfitting.
+- More history and more symbols are likely needed.
+
+========================================================
+
+FILE 2: features.py
+-------------------
+
+Feature Version:
+v4_candles_m5_m15
+
+Structural Features:
+- asia_range
+- atr14
+- asia_range_atr
+- eqh_touch_count
+- eql_touch_count
+- sweep_dir
+- sweep_depth_atr
+- minutes_from_london_open
+- bars_from_sweep_to_mss
+- bars_from_sweep_to_mss_norm
+- confirm_range_atr
+- entry_dist_atr
+- rr
+- day_of_week
+- sweep_depth_x_asia_atr
+- confirm_body_ratio
+- rr_capped
+- sweep_velocity_atr
+- multi_touch
+- entry_stop_atr
+
+Candlestick Features:
+M5:
+- m5_candle_score
+- m5_candle_dir
+- m5_candle_alignment
+- m5_candle_abs_score
+- m5_candle_age_bars
+- m5_candle_recent_count
+- m5_candle_momentum_count
+- m5_candle_reversal_count
+- m5_candle_indecision_count
+
+M5 Confirmation Candle Shape:
+- m5_confirm_body_atr
+- m5_confirm_upper_wick_atr
+- m5_confirm_lower_wick_atr
+- m5_confirm_range_atr
+
+M15 Context:
+- m15_candle_score
+- m15_candle_dir
+- m15_candle_alignment
+- m15_candle_abs_score
+- m15_candle_age_bars
+- m15_candle_recent_count
+- m15_candle_momentum_count
+- m15_candle_reversal_count
+- m15_candle_indecision_count
+
+Feature Engineering Logic:
+- ATR normalized measurements.
+- Asia range normalization.
+- Sweep depth normalization.
+- MSS timing metrics.
+- RR calculations.
+- Confirm candle body/wick analysis.
+- Candlestick pattern scoring.
+- M5 and M15 directional alignment.
+
+Hard Candlestick Block:
+-----------------------
+evaluate_candlestick_hard_block()
+
+Rules:
+1. Reject contradictory candle signals.
+2. Reject weak aligned signals below minimum score.
+3. Optionally reject neutral signals.
+4. Pass only aligned and sufficiently strong candle confirmations.
+
+Current System Architecture:
+----------------------------
+Asia Sweep
+    -> Sweep Detection
+    -> MSS Confirmation
+    -> Structural Features
+    -> M5 Candle Context
+    -> M15 Candle Context
+    -> ML Classification
+    -> Trade Filter
+
+Recommended Next Focus:
+-----------------------
+1. Increase dataset size significantly.
+2. Evaluate feature importance.
+3. Compare:
+   - Structural only
+   - Structural + M5
+   - Structural + M5 + M15
+4. Monitor precision more than accuracy.
+5. Build walk-forward validation.
+6. Add probability calibration before live deployment.

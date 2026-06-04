@@ -36,6 +36,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from ml.asia_sweep_london_mss.features import FEATURE_COLS, build_asia_sweep_feature_bundle
+
 try:
     import config as _cfg
 except Exception:  # pragma: no cover
@@ -76,6 +78,18 @@ def load_m5_bars(outputs_dir: Path, symbol: str) -> Optional[pd.DataFrame]:
         return None
     df = df.set_index("time").sort_index()
     # Stored times are UTC-naive; localize to UTC for correct timezone math.
+    df.index = _to_utc_aware_index(df.index)
+    return df
+
+
+def load_m15_bars(outputs_dir: Path, symbol: str) -> Optional[pd.DataFrame]:
+    path = outputs_dir / f"{_symbol_slug(symbol)}_bars.csv"
+    if not path.exists():
+        return None
+    df = pd.read_csv(path, parse_dates=["time"])
+    if "time" not in df.columns:
+        return None
+    df = df.set_index("time").sort_index()
     df.index = _to_utc_aware_index(df.index)
     return df
 
@@ -282,35 +296,11 @@ def simulate_label(
     return 0, fill_time
 
 
-FEATURE_COLS = [
-    "asia_range",
-    "atr14",
-    "asia_range_atr",
-    "eqh_touch_count",
-    "eql_touch_count",
-    "sweep_dir",
-    "sweep_depth_atr",
-    "minutes_from_london_open",
-    "bars_from_sweep_to_mss",
-    "bars_from_sweep_to_mss_norm",
-    "confirm_range_atr",
-    "entry_dist_atr",
-    "rr",
-    # --- v2 engineered features ---
-    "day_of_week",               # 0=Mon..4=Fri, captures day-specific edge
-    "sweep_depth_x_asia_atr",    # interaction: deep sweep in tight range -> cleaner
-    "confirm_body_ratio",        # |close-open|/range of confirm candle (conviction)
-    "rr_capped",                 # rr capped at 20 to remove outlier noise
-    "sweep_velocity_atr",        # sweep_depth_atr / bars_from_sweep_to_mss (speed)
-    "multi_touch",               # max(eqh, eql) – single vs multi-tested level
-    "entry_stop_atr",            # |entry-stop|/atr – tightness of stop
-]
-
-
 def build_dataset_for_symbol(symbol: str, *, outputs_dir: Path, both_sides: bool = False) -> list[dict]:
     df_utc = load_m5_bars(outputs_dir, symbol)
     if df_utc is None or df_utc.empty:
         return []
+    df_m15_utc = load_m15_bars(outputs_dir, symbol)
 
     session_tz = str(_cfg_get("ASIA_SWEEP_SESSION_TIME_ZONE", "Europe/London"))
     asia_start = str(_cfg_get("ASIA_SWEEP_ASIA_START", "00:00"))
@@ -482,32 +472,37 @@ def build_dataset_for_symbol(symbol: str, *, outputs_dir: Path, both_sides: bool
                 london_end=london_end,
             )
 
+            try:
+                bundle = build_asia_sweep_feature_bundle(
+                    symbol=symbol,
+                    side=side,
+                    t0=t0,
+                    m5_session=day_df,
+                    asia_high=float(asia_high),
+                    asia_low=float(asia_low),
+                    eqh_count=int(eqh_count),
+                    eql_count=int(eql_count),
+                    sweep_time=sweep_time,
+                    entry=float(entry),
+                    stop=float(stop),
+                    tp=float(tp),
+                    confirm_window_bars=int(confirm_window_bars),
+                    london_start=london_start,
+                    london_end=london_end,
+                    m15_utc=df_m15_utc,
+                    candle_features_enabled=bool(_cfg_get("ASIA_SWEEP_CANDLE_FEATURES_ENABLED", True)),
+                    m15_context_enabled=bool(_cfg_get("ASIA_SWEEP_CANDLE_M15_CONTEXT_ENABLED", True)),
+                )
+                feature_values = bundle.features
+            except Exception:
+                # Skip rows where the shared live/training feature contract cannot be built.
+                continue
+
             row = {
                 "t0": t0_utc.isoformat(),
                 "symbol": str(symbol),
                 "label": int(label),
-                # features (locked)
-                "asia_range": asia_range,
-                "atr14": a,
-                "asia_range_atr": asia_range_atr,
-                "eqh_touch_count": int(eqh_count),
-                "eql_touch_count": int(eql_count),
-                "sweep_dir": int(sweep_dir),
-                "sweep_depth_atr": float(sweep_depth_atr) if sweep_depth_atr is not None else np.nan,
-                "minutes_from_london_open": float(minutes_from_london_open),
-                "bars_from_sweep_to_mss": float(bars_from_sweep) if bars_from_sweep is not None else np.nan,
-                "bars_from_sweep_to_mss_norm": float(bars_from_sweep_norm) if bars_from_sweep_norm is not None else np.nan,
-                "confirm_range_atr": float(confirm_range_atr),
-                "entry_dist_atr": float(entry_dist_atr),
-                "rr": float(rr) if rr is not None else np.nan,
-                # v2 engineered features
-                "day_of_week": day_of_week,
-                "sweep_depth_x_asia_atr": float(sweep_depth_x_asia_atr) if sweep_depth_x_asia_atr is not None else np.nan,
-                "confirm_body_ratio": float(confirm_body_ratio),
-                "rr_capped": float(rr_capped) if rr_capped is not None else np.nan,
-                "sweep_velocity_atr": float(sweep_velocity_atr) if sweep_velocity_atr is not None else np.nan,
-                "multi_touch": int(multi_touch),
-                "entry_stop_atr": float(entry_stop_atr) if entry_stop_atr is not None else np.nan,
+                **feature_values,
                 # debug
                 "side": side,
                 "entry": float(entry),

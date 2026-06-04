@@ -14,31 +14,7 @@ except Exception:  # pragma: no cover
     torch = None  # type: ignore[assignment]
     Dataset = object  # type: ignore[misc,assignment]
 
-
-# Keep feature list stable and explicit (plan-locked).
-FEATURE_COLS: list[str] = [
-    "asia_range",
-    "atr14",
-    "asia_range_atr",
-    "eqh_touch_count",
-    "eql_touch_count",
-    "sweep_dir",
-    "sweep_depth_atr",
-    "minutes_from_london_open",
-    "bars_from_sweep_to_mss",
-    "bars_from_sweep_to_mss_norm",
-    "confirm_range_atr",
-    "entry_dist_atr",
-    "rr",
-    # --- v2 engineered features ---
-    "day_of_week",
-    "sweep_depth_x_asia_atr",
-    "confirm_body_ratio",
-    "rr_capped",
-    "sweep_velocity_atr",
-    "multi_touch",
-    "entry_stop_atr",
-]
+from ml.asia_sweep_london_mss.features import FEATURE_COLS
 
 
 @dataclass
